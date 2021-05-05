@@ -3,13 +3,15 @@ ESP-WOLFSSL
 
 # Licensing
 
-Espressif has a license to distribute wolfSSL(v4.3) royalty-free in binary form on all Espressif MCU products.
-You can use the binary wolfSSL library on Espressif devices in products, without additional royalty costs.
-The binary library does not include wolfSSL features for TLS 1.3, FIPS or DTLS 1.2.
 
-Updates to these wolfSSL binary libraries will be available until at least March 2021.
+---
+**IMPORTANT NOTE**
 
-To discuss additional features, additional support and updates, or to obtain a quote for other individual licensing options (commercial usage beyond March 2021) please contact licensing@wolfssl.com.
+Until March 2021, this repository contained binary distribution of wolfSSL libraries, which could be used royalty-free on all Espressif MCU products. This royalty-free binary distribution is not available anymore.
+
+This repository now uses upstream wolfSSL GitHub pointer as submodule and can still be used as ESP-IDF component. Please follow licensing requirements per [wolfssl/LICENSING](https://github.com/wolfSSL/wolfssl/blob/master/LICENSING)
+
+---
 
 # Requirements
 - ESP_IDF
