@@ -25,6 +25,7 @@
 #include "protocol_examples_common.h"
 #include <wolfssl/wolfcrypt/settings.h>
 #include "wolfssl/ssl.h"
+#include "esp_netif.h"
 
 #if CONFIG_CERT_AUTH
 extern const uint8_t server_root_cert_pem_start[] asm("_binary_server_root_cert_pem_start");
@@ -240,7 +241,7 @@ failed1:
 void app_main(void)
 {
     ESP_ERROR_CHECK( nvs_flash_init() );
-    tcpip_adapter_init();
+    ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.

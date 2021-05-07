@@ -1,31 +1,35 @@
-set(include_dirs port wolfssl)
-set(lib_path ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl/lib/${IDF_TARGET})
+set(COMPONENT_SRCDIRS "wolfssl/src/"
+                      "wolfssl/wolfcrypt/src"
+                      "wolfssl/wolfcrypt/src/port/Espressif/"
+                      "wolfssl/wolfcrypt/src/port/atmel/"
+                      )
 
-idf_component_register(INCLUDE_DIRS "${include_dirs}"
-                    REQUIRES lwip
-                    REQUIRED_IDF_TARGETS esp32 esp8266)
+set(COMPONENT_REQUIRES lwip)
 
-target_compile_options(${COMPONENT_LIB} INTERFACE -Wno-cpp)
-target_compile_definitions(${COMPONENT_LIB} INTERFACE WOLFSSL_USER_SETTINGS)
+set(COMPONENT_ADD_INCLUDEDIRS
+    "port"
+    "wolfssl"
+    )
 
-if(CONFIG_ESP_DEBUG_WOLFSSL)
-    if(CONFIG_ESP_WOLFSSL_SMALL_CERT_VERIFY)
-        # use debug library with WOLFSSL_SMALL_CERT_VERIFY enabled
-        set(lib "libwolfssl_small_cert_verify.a")
-    else()
-        # use debug library without WOLFSSL_SMALL_CERT_VERIFY enabled
-        set(lib "libwolfssl_debug.a")
-    endif()
-else()
-    if(CONFIG_ESP_WOLFSSL_SMALL_CERT_VERIFY)
-        # use library with WOLFSSL_SMALL_CERT_VERIFY enabled (without debug)
-        set(lib "libwolfssl_small_cert_verify.a")
-    else()
-        # use library without WOLFSSL_SMALL_CERT_VERIFY enabled (without debug)
-        # This Library is USED BY DEFAULT (no wolfssl options enabled)
-        set(lib "libwolfssl.a")
-    endif()
-endif()
-# Establish dependancy of prebuilt wolfssl binaries on freertos
-add_prebuilt_library(prebuilt ${lib_path}/${lib} PRIV_REQUIRES freertos)
-target_link_libraries(${COMPONENT_LIB} INTERFACE prebuilt)
+set(COMPONENT_SRCEXCLUDE_1
+    "wolfssl/wolfcrypt/src/aes_asm.S"
+    "wolfssl/wolfcrypt/src/evp.c"
+    "wolfssl/wolfcrypt/src/misc.c"
+    "wolfssl/src/bio.c"
+    "wolfssl/wolfcrypt/src/sp_x86_64_asm.S"
+    "wolfssl/wolfcrypt/src/sha512_asm.S"
+    "wolfssl/wolfcrypt/src/sha256_asm.S"
+    "wolfssl/wolfcrypt/src/chacha_asm.S"
+    "wolfssl/wolfcrypt/src/aes_gcm_asm.S"
+    "wolfssl/wolfcrypt/src/poly1305_asm.S"
+    "wolfssl/wolfcrypt/src/fe_x25519_asm.S"
+    )
+
+idf_component_register(SRC_DIRS "${COMPONENT_SRCDIRS}"
+                        INCLUDE_DIRS "${COMPONENT_ADD_INCLUDEDIRS}"
+                        REQUIRES "${COMPONENT_REQUIRES}"
+                        EXCLUDE_SRCS "${COMPONENT_SRCEXCLUDE_1}"
+                        )
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-cpp -Wno-maybe-uninitialized)
+set_source_files_properties(wolfssl/src/ssl.c PROPERTIES COMPILE_FLAGS -Wno-format-truncation)
+target_compile_definitions(${COMPONENT_LIB} PUBLIC WOLFSSL_USER_SETTINGS)
