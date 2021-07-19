@@ -22,7 +22,7 @@ This repository now uses upstream wolfSSL GitHub pointer as submodule and can st
 
 - Please clone this repository using,
  ```
- git clone https://github.com/espressif/esp-wolfssl
+ git clone --recursive https://github.com/espressif/esp-wolfssl
  ```
 - Please refer to https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html for setting ESP-IDF
  - ESP-IDF can be downloaded from https://github.com/espressif/esp-idf/

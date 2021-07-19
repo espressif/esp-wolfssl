@@ -28,7 +28,7 @@ variables:
 test_build_esp32:
   when: always
   stage: build
-  image: $CI_DOCKER_REGISTRY/esp32-ci-env$BOT_DOCKER_IMAGE_TAG
+  image: "$CI_DOCKER_REGISTRY/esp-idf-doc-env:v4.4-1-v2"
   tags:
     - build
   variables:
@@ -46,7 +46,7 @@ test_build_esp32:
     - source tools/ci/configure_ci_environment.sh
     - tools/idf_tools.py --non-interactive install && eval "$(tools/idf_tools.py --non-interactive export)" || exit 1
     - popd
-    - cd ../tools/ci && ./build_exmaples.sh
+    - cd ../tools/ci && ./build_exmaples.sh || exit 1
 
 test_build_esp8266:
   when: always
@@ -65,13 +65,15 @@ test_build_esp8266:
     - git clone --recursive --depth 1 $GITLAB_SSH_SERVER/sdk/ESP8266_RTOS_SDK.git
     - pushd ESP8266_RTOS_SDK
     - echo "v3.3" > version.txt
+    - tools/idf_tools.py --non-interactive install && eval "$(tools/idf_tools.py --non-interactive export)" || exit 1
+    - source tools/ci/configure_ci_environment.sh
     - popd
-    - cd ../tools/ci && ./build_exmaples.sh
+    - cd ../tools/ci && ./build_exmaples.sh || exit 1
 
 
 push_master_to_github:
   stage: deploy
-  image: $CI_DOCKER_REGISTRY/esp32-ci-env$BOT_DOCKER_IMAGE_TAG
+  image: "$CI_DOCKER_REGISTRY/esp-idf-doc-env:v4.4-1-v2"
   tags:
     - deploy
   only:
