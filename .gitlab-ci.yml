@@ -46,7 +46,7 @@ test_build_esp32:
     - source tools/ci/configure_ci_environment.sh
     - tools/idf_tools.py --non-interactive install && eval "$(tools/idf_tools.py --non-interactive export)" || exit 1
     - popd
-    - cd ../tools/ci && ./build_exmaples.sh
+    - cd ../tools/ci && ./build_exmaples.sh || exit 1
 
 test_build_esp8266:
   when: always
@@ -66,7 +66,7 @@ test_build_esp8266:
     - pushd ESP8266_RTOS_SDK
     - echo "v3.3" > version.txt
     - popd
-    - cd ../tools/ci && ./build_exmaples.sh
+    - cd ../tools/ci && ./build_exmaples.sh || exit 1
 
 
 push_master_to_github:

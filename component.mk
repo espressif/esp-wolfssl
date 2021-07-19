@@ -1,28 +1,23 @@
+#
+# Component Makefile
+#
+
+COMPONENT_SRCDIRS := wolfssl/src wolfssl/wolfcrypt/src
+COMPONENT_SRCDIRS += wolfssl/wolfcrypt/src/port/Espressif
+COMPONENT_SRCDIRS += wolfssl/wolfcrypt/src/port/atmel
+
 COMPONENT_ADD_INCLUDEDIRS := port wolfssl
 
-WOLFSSL_LIB_PATH := $(COMPONENT_PATH)/wolfssl/lib/$(IDF_TARGET)
+CFLAGS +=-DWOLFSSL_USER_SETTINGS -Wno-cpp -Wno-maybe-uninitialized
 
-ifdef CONFIG_ESP_DEBUG_WOLFSSL
-    ifdef CONFIG_ESP_WOLFSSL_SMALL_CERT_VERIFY
-        # use debug library with WOLFSSL_SMALL_CERT_VERIFY enabled
-        COMPONENT_ADD_LDFLAGS := $(WOLFSSL_LIB_PATH)/libwolfssl_small_cert_verify_debug.a
-        COMPONENT_ADD_LINKER_DEPS := $(WOLFSSL_LIB_PATH)/libwolfssl_small_cert_verify_debug.a
-    else
-        # use debug library without WOLFSSL_SMALL_CERT_VERIFY enabled
-        COMPONENT_ADD_LDFLAGS := $(WOLFSSL_LIB_PATH)/libwolfssl_debug.a
-        COMPONENT_ADD_LINKER_DEPS := $(WOLFSSL_LIB_PATH)/libwolfssl_debug.a
-    endif
-else
-    ifdef CONFIG_ESP_WOLFSSL_SMALL_CERT_VERIFY
-        # use library with WOLFSSL_SMALL_CERT_VERIFY enabled (without debug)
-        COMPONENT_ADD_LDFLAGS := $(WOLFSSL_LIB_PATH)/libwolfssl_small_cert_verify.a
-        COMPONENT_ADD_LINKER_DEPS := $(WOLFSSL_LIB_PATH)/libwolfssl_small_cert_verify.a
-    else
-        # use library without WOLFSSL_SMALL_CERT_VERIFY enabled (without debug)
-        # This Library is USED BY DEFAULT (no wolfssl options enabled)
-        COMPONENT_ADD_LDFLAGS := $(WOLFSSL_LIB_PATH)/libwolfssl.a
-        COMPONENT_ADD_LINKER_DEPS := $(WOLFSSL_LIB_PATH)/libwolfssl.a
-    endif
-endif
-
-CFLAGS +=-DWOLFSSL_USER_SETTINGS
+COMPONENT_OBJEXCLUDE := wolfssl/wolfcrypt/src/aes_asm.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/evp.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/misc.o
+COMPONENT_OBJEXCLUDE += wolfssl/src/bio.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/sp_x86_64_asm.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/sha256_asm.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/sha512_asm.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/chacha_asm.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/aes_gcm_asm.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/poly1305_asm.o
+COMPONENT_OBJEXCLUDE += wolfssl/wolfcrypt/src/fe_x25519_asm.o
