@@ -28,7 +28,7 @@ variables:
 test_build_esp32:
   when: always
   stage: build
-  image: $CI_DOCKER_REGISTRY/esp32-ci-env$BOT_DOCKER_IMAGE_TAG
+  image: "$CI_DOCKER_REGISTRY/esp-idf-doc-env:v4.4-1-v2"
   tags:
     - build
   variables:
@@ -71,7 +71,7 @@ test_build_esp8266:
 
 push_master_to_github:
   stage: deploy
-  image: $CI_DOCKER_REGISTRY/esp32-ci-env$BOT_DOCKER_IMAGE_TAG
+  image: "$CI_DOCKER_REGISTRY/esp-idf-doc-env:v4.4-1-v2"
   tags:
     - deploy
   only:
