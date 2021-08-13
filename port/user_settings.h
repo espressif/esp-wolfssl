@@ -63,7 +63,7 @@
 #define WOLFSSL_BASE64_ENCODE
 
 /* This enables the most common openssl compatibility layer API's */
-//#define OPENSSL_EXTRA
+#define OPENSSL_EXTRA
 
 /* This enables all Openssl compatibility layer functions
  * Note: this is large and cannot be used with NO_ASN_TIME */
