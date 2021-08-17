@@ -18,27 +18,30 @@
 #define USE_CERT_BUFFERS_2048
 
 #define HAVE_TLS_EXTENSIONS
-#define WC_RSA_PSS
-#define HAVE_HKDF
-#define HAVE_AEAD
 #define HAVE_SUPPORTED_CURVES
+#define WOLFSSL_STATIC_PSK
+#define HAVE_AEAD
 #define HAVE_SNI
-/* ALPN in wolfSSL is enabled by default,can be disabled with menuconfig */
+/* ALPN in wolfSSL is enabled by default, can be disabled with menuconfig */
 #define HAVE_ALPN
+
 /* when you want to use SINGLE THREAD */
 /* #define SINGLE_THREADED */
 #define NO_FILESYSTEM
-#define WOLFSSL_STATIC_PSK
+
 #define HAVE_AESGCM
-/* when you want to use SHA384 */
-/* #define WOLFSSL_SHA384 */
+#define WC_RSA_PSS
+#define HAVE_HKDF
+#define WOLFSSL_SHA384
 #define WOLFSSL_SHA512
 #define HAVE_ECC
 #define HAVE_CURVE25519
 #define CURVE25519_SMALL
 #define HAVE_ED25519
+
 /* do not use wolfssl defined app_main function used to test esp-wolfssl */
 #define NO_MAIN_DRIVER
+
 /* you can disable folowing cipher suits by uncommenting following lines */
 //#define NO_DSA
 //#define NO_DH
@@ -49,18 +52,30 @@
 #define NO_RC4
 #define NO_RABBIT
 
-#define OPENSSL_EXTRA_X509_SMALL /* Allows of x509 certs (for wolfssl_get_verify_result function)*/
-#define WOLFSSL_ALT_CERT_CHAINS /* Allow to try alternate cert chain */
+/* Allows of x509 certs (for wolfssl_get_verify_result function) */
+#define OPENSSL_EXTRA_X509_SMALL
+
+/* Only requires the peer certificate to validate to a trusted certificate.
+ * If peer sends additional certificates not in the chain they are allowed, 
+ * but not trusted */
+#define WOLFSSL_ALT_CERT_CHAINS
 
 #define WOLFSSL_BASE64_ENCODE
-//#define OPENSSL_EXTRA
-#define OPENSSL_ALL
-/* If you want to authenticate the server with Intermediate CA cert, enable following flag */
+
+/* This enables the most common openssl compatibility layer API's */
+#define OPENSSL_EXTRA
+
+/* This enables all Openssl compatibility layer functions
+ * Note: this is large and cannot be used with NO_ASN_TIME */
+//#define OPENSSL_ALL
+
+/* Use smaller version of the certificate checking code */
 #define WOLFSSL_SMALL_CERT_VERIFY
 
-/* Reduces the Cache used by wolfssl and thus reduces heap used */
+/* Reduces the stack and session cache used by wolfssl */
 #define WOLFSSL_SMALL_STACK
 #define SMALL_SESSION_CACHE
+
 /* esp32-wroom-32se specific definition */
 #if defined(WOLFSSL_ESPWROOM32SE)
     #define WOLFSSL_ATECC508A
@@ -85,19 +100,23 @@
 /* debug options */
 /* #define DEBUG_WOLFSSL */
 /* #define WOLFSSL_ESP32WROOM32_CRYPT_DEBUG */
-/* #define WOLFSSL_ATECC508A_DEBUG          */
+/* #define WOLFSSL_ATECC_DEBUG */
 
 /* date/time                               */
 /* if it cannot adjust time in the device, */
 /* enable macro below                      */
+/* Warning, NO_ASN_TIME disables all certificate date validations 
+ * and should only be used if testing or date is not available 
+ */
 #define NO_ASN_TIME
 #define XTIME time
 #define XGMTIME(c, t) gmtime((c))
 
 /* when you want not to use HW acceleration */
 #if !defined(CONFIG_IDF_TARGET_ESP32)
-#define NO_ESP32WROOM32_CRYPT
+    #define NO_ESP32WROOM32_CRYPT
 #endif
+
 /* Turn off the sha acceleration for esp32 */
 #define NO_WOLFSSL_ESP32WROOM32_CRYPT_HASH
 /* #define NO_WOLFSSL_ESP32WROOM32_CRYPT_AES */
