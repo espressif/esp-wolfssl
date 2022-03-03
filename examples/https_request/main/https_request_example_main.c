@@ -43,21 +43,21 @@
 #include "esp_tls.h"
 
 /* Constants that aren't configurable in menuconfig */
-#define WEB_SERVER "www.howsmyssl.com"
-#define WEB_PORT "443"
-#define WEB_URL "https://www.howsmyssl.com/a/check"
+#define WEB_SERVER "api.github.com"
+#define WEB_PORT (443)
+#define WEB_URL "https://api.github.com/zen"
 
 static const char *TAG = "example";
 
 static const char *REQUEST = "GET " WEB_URL " HTTP/1.0\r\n"
-    "Host: "WEB_SERVER"\r\n"
-    "User-Agent: esp-idf/1.0 esp32\r\n"
-    "\r\n";
+                             "Host: "WEB_SERVER"\r\n"
+                             "User-Agent: esp-idf/1.0 esp32\r\n"
+                             "\r\n";
 
-/* Root cert for howsmyssl.com, taken from server_root_cert.pem
+/* Root cert for api.github.com, taken from server_root_cert.pem
 
    The PEM file was extracted from the output of this command:
-   openssl s_client -showcerts -connect www.howsmyssl.com:443 </dev/null
+   openssl s_client -showcerts -connect www.api.github.com:443 </dev/null
 
    The CA root cert is the last cert given in the chain of certs.
 
@@ -67,60 +67,77 @@ static const char *REQUEST = "GET " WEB_URL " HTTP/1.0\r\n"
 extern const uint8_t server_root_cert_pem_start[] asm("_binary_server_root_cert_pem_start");
 extern const uint8_t server_root_cert_pem_end[]   asm("_binary_server_root_cert_pem_end");
 
+/*
+ * NOTE: To turn on debug logs for wolfSSL component and this example, uncomment
+ * #define DEBUF_WOLFSSL in file components/wolfssl/port/user_settings.h
+ */
+/*
+ * NOTE: To turn on TLS 1.3 only mode for wolfSSL component, uncomment
+ * #define WOLFSSL_TLS13 in file ../components/wolfssl/port/user_settings.h
+ */
 
 static void https_get_task(void *pvParameters)
 {
     char buf[512];
     int ret, len;
+    esp_tls_t *tls = NULL;
 
-    while(1) {
+    while (1) {
         esp_tls_cfg_t cfg = {
             .cacert_buf  = server_root_cert_pem_start,
             .cacert_bytes = server_root_cert_pem_end - server_root_cert_pem_start,
         };
-        
-        struct esp_tls *tls = esp_tls_conn_http_new(WEB_URL, &cfg);
-        
-        if(tls != NULL) {
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+        tls = esp_tls_init();
+        if (!tls) {
+            ESP_LOGE(TAG, "Failed to allocate esp_tls handle!");
+            goto exit;
+        }
+
+        if (esp_tls_conn_http_new_sync(WEB_URL, &cfg, tls) == 1) {
+            ESP_LOGI(TAG, "Connection established...");
+        } else {
+            ESP_LOGE(TAG, "Connection failed...");
+            goto cleanup;
+        }
+#else // ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+        tls = esp_tls_conn_http_new(WEB_URL, &cfg);
+        if (tls != NULL) {
             ESP_LOGI(TAG, "Connection established...");
         } else {
             ESP_LOGE(TAG, "Connection failed...");
             goto exit;
         }
-        
+#endif //ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+
         size_t written_bytes = 0;
         do {
-            ret = esp_tls_conn_write(tls, 
-                                     REQUEST + written_bytes, 
+            ret = esp_tls_conn_write(tls,
+                                     REQUEST + written_bytes,
                                      strlen(REQUEST) - written_bytes);
             if (ret >= 0) {
                 ESP_LOGI(TAG, "%d bytes written", ret);
                 written_bytes += ret;
             } else if (ret != ESP_TLS_ERR_SSL_WANT_READ  && ret != ESP_TLS_ERR_SSL_WANT_WRITE) {
                 ESP_LOGE(TAG, "esp_tls_conn_write  returned 0x%x", ret);
-                goto exit;
+                goto cleanup;
             }
-        } while(written_bytes < strlen(REQUEST));
+        } while (written_bytes < strlen(REQUEST));
 
         ESP_LOGI(TAG, "Reading HTTP response...");
 
-        do
-        {
+        do {
             len = sizeof(buf) - 1;
-            bzero(buf, sizeof(buf));
+            memset(buf, 0x00, sizeof(buf));
+
             ret = esp_tls_conn_read(tls, (char *)buf, len);
-            
-            if(ret == ESP_TLS_ERR_SSL_WANT_WRITE  || ret == ESP_TLS_ERR_SSL_WANT_READ)
+            if (ret == ESP_TLS_ERR_SSL_WANT_WRITE  || ret == ESP_TLS_ERR_SSL_WANT_READ) {
                 continue;
-            
-            if(ret < 0)
-           {
+            } else if (ret < 0) {
                 ESP_LOGE(TAG, "esp_tls_conn_read  returned -0x%x", -ret);
                 break;
-            }
-
-            if(ret == 0)
-            {
+            } else if (ret == 0) {
                 ESP_LOGI(TAG, "connection closed");
                 break;
             }
@@ -128,19 +145,19 @@ static void https_get_task(void *pvParameters)
             len = ret;
             ESP_LOGD(TAG, "%d bytes read", len);
             /* Print response directly to stdout as it is read */
-            for(int i = 0; i < len; i++) {
+            for (int i = 0; i < len; i++) {
                 putchar(buf[i]);
             }
-        } while(1);
+            putchar('\n'); // JSON output doesn't have a newline at end
+        } while (1);
 
-    exit:
-        esp_tls_conn_delete(tls);    
-        putchar('\n'); // JSON output doesn't have a newline at end
-
-        static int request_count;
+cleanup:
+        esp_tls_conn_destroy(tls);
+exit:;
+        static int request_count = 0;
         ESP_LOGI(TAG, "Completed %d requests", ++request_count);
 
-        for(int countdown = 10; countdown >= 0; countdown--) {
+        for (int countdown = 10; countdown >= 0; countdown--) {
             ESP_LOGI(TAG, "%d...", countdown);
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
@@ -150,7 +167,7 @@ static void https_get_task(void *pvParameters)
 
 void app_main(void)
 {
-    ESP_ERROR_CHECK( nvs_flash_init() );
+    ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
