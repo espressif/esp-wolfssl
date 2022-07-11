@@ -31,5 +31,7 @@ idf_component_register(SRC_DIRS "${COMPONENT_SRCDIRS}"
                         EXCLUDE_SRCS "${COMPONENT_SRCEXCLUDE_1}"
                         )
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-cpp -Wno-maybe-uninitialized)
-set_source_files_properties(wolfssl/src/ssl.c PROPERTIES COMPILE_FLAGS -Wno-format-truncation)
+set_source_files_properties(wolfssl/src/ssl.c PROPERTIES COMPILE_FLAGS "-Wno-format-truncation -Wno-char-subscripts")
+set_source_files_properties(wolfssl/wolfcrypt/src/random.c PROPERTIES COMPILE_FLAGS "-Wno-implicit-function-declaration")
+set_source_files_properties(wolfssl/wolfcrypt/src/port/Espressif/esp32_aes.c PROPERTIES COMPILE_FLAGS "-Wno-incompatible-pointer-types")
 target_compile_definitions(${COMPONENT_LIB} PUBLIC WOLFSSL_USER_SETTINGS)

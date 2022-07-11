@@ -1,15 +1,14 @@
 menu "wolfSSL"
 
     config TLS_STACK_WOLFSSL
-        bool "Include wolfSSL in esp-tls"
+        bool "Include wolfSSL in ESP-TLS"
         default y
+        select FREERTOS_ENABLE_BACKWARD_COMPATIBILITY
         help
-            Includes wolfSSL in the esp-tls so that , esp-tls can be compiled with wolfSSL as its SSL/TLS library.
+            Includes wolfSSL in ESP-TLS so that it can be compiled with wolfSSL as its SSL/TLS library.
 
     config WOLFSSL_HAVE_ALPN
-        bool "Enable ALPN(Application Layer Protocol Negotiation) in wolfSSL"
+        bool "Enable ALPN (Application Layer Protocol Negotiation) in wolfSSL"
         default y
-        help
-            Enables ALPN option in wolfSSL.
 
 endmenu # wolfSSL
