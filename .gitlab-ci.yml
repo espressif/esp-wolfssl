@@ -6,6 +6,7 @@ variables:
   BATCH_BUILD: "1"
   V: "0"
   MAKEFLAGS: "-j5 --no-keep-going"
+  GIT_SUBMODULE_STRATEGY: recursive
 
 # before each job, we need to check if this job is filtered by bot stage/job filter
 .apply_bot_filter: &apply_bot_filter
@@ -25,65 +26,36 @@ variables:
     - git --version
     - git submodule update --init --recursive
 
-test_build_esp32:
-  when: always
+.build_idf_template:
   stage: build
-  image: "$CI_DOCKER_REGISTRY/esp-idf-doc-env:v4.4-1-v2"
+  image: espressif/idf:latest
   tags:
     - build
   variables:
-    IDF_PATH: "$CI_PROJECT_DIR/idf/esp-idf"
-  before_script: *setup_env
+    PEDANTIC_FLAGS: "-Werror -Werror=unused-variable -Werror=unused-but-set-variable -Werror=unused-function"
+    EXTRA_CFLAGS: "${PEDANTIC_FLAGS}"
+    EXTRA_CXXFLAGS: "${PEDANTIC_FLAGS}"
   script:
-    - export PATH="$IDF_PATH/tools:$PATH"
-    - mkdir idf
-    - cd idf
-    - export 
-    - git clone --recursive --depth 1 $GITLAB_SSH_SERVER/idf/esp-idf.git
-    - pushd esp-idf
-    - echo "v4.1" > version.txt
-    - source tools/ci/setup_python.sh
-    - source tools/ci/configure_ci_environment.sh
-    - tools/idf_tools.py --non-interactive install && eval "$(tools/idf_tools.py --non-interactive export)" || exit 1
-    - popd
-    - cd ../tools/ci && ./build_exmaples.sh || exit 1
+    - cd $CI_PROJECT_DIR/tools/ci
+    - ./build_examples.sh || exit 1
 
-test_build_esp8266:
-  when: always
-  stage: build
-  image: $CI_DOCKER_REGISTRY/esp8266-ci-env-new
-  tags:
-    - build
-  variables:
-    IDF_PATH: "$CI_PROJECT_DIR/idf/ESP8266_RTOS_SDK"
-  before_script: *setup_env
-  script:
-    - export PATH="$IDF_PATH/tools:$PATH"
-    - mkdir idf
-    - cd idf
-    - export
-    - git clone --recursive --depth 1 $GITLAB_SSH_SERVER/sdk/ESP8266_RTOS_SDK.git
-    - pushd ESP8266_RTOS_SDK
-    - echo "v3.3" > version.txt
-    - tools/idf_tools.py --non-interactive install && eval "$(tools/idf_tools.py --non-interactive export)" || exit 1
-    - source tools/ci/configure_ci_environment.sh
-    - popd
-    - cd ../tools/ci && ./build_exmaples.sh || exit 1
+build_idf_master:
+  extends: .build_idf_template
+  image: espressif/idf:latest
 
+build_idf_v4.4:
+  extends: .build_idf_template
+  image: espressif/idf:release-v4.4
 
 push_master_to_github:
   stage: deploy
-  image: "$CI_DOCKER_REGISTRY/esp-idf-doc-env:v4.4-1-v2"
+  image: espressif/idf:latest
   tags:
     - deploy
   only:
     - master
-    - /^release\/v/
-    - /^v\d+\.\d+(\.\d+)?($|-)/
   when: on_success
-  dependencies:
-    - test_build_esp32
-    - test_build_esp8266
+  dependencies: []
   variables:
     GITHUB_PUSH_REFS: refs/remotes/origin/release refs/remotes/origin/master
   before_script: *setup_env
