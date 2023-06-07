@@ -1,6 +1,10 @@
 ESP-WOLFSSL
 ===========
 
+# ESP Registry
+
+The wolfSSL library is now available as a Managed Component on the [ESP Registry](https://components.espressif.com/components/wolfssl/wolfssl).
+
 # Licensing
 
 
