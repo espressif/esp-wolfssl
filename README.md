@@ -44,6 +44,10 @@ It shows following options
 
     - Enable ALPN ( Application Layer Protocol Negotiation ) in wolfSSL
         - This option is enabled by default for wolfSSL, and can be disabled if not required.
+
+    - Enable OCSP (Online Certificate Status Protocol) in wolfSSL
+        - This options is disabled by default. Enabling it adds support for checking the host's certificate revocation status
+          during the TLS handshake.
 ---
 **NOTE**
  These options are valid for `esp-tls` only if `wolfSSL` is selected as its SSL/TLS Library.

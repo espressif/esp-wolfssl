@@ -11,4 +11,15 @@ menu "wolfSSL"
         bool "Enable ALPN (Application Layer Protocol Negotiation) in wolfSSL"
         default y
 
+    config WOLFSSL_HAVE_OCSP
+        bool "Enable OCSP (Online Certificate Status Protocol) in wolfSSL"
+        default n
+        help
+            Enables Online Certificate Status Protocol (OCSP) within wolfSSL, which is the modern alternative
+            to maintaining Certificate Revocation Lists (CRLs). Enabling this option will make esp-tls to automatically
+            indicate support for OCSP when connecting as a TLS client. Server that support OCSP will forward the
+            certificate's revocation status to the client and the client will automatically verify the servers certificate
+            status based on the OCSP response forwarded to it.
+            Note: This option enables the OCSP in stapling (v1) mode for the client hence the TLS server needs to support OCSP stapling v1 .
+
 endmenu # wolfSSL
