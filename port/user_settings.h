@@ -44,6 +44,11 @@
 
 #define HAVE_SNI
 
+#ifdef CONFIG_WOLFSSL_HAVE_OCSP
+#define HAVE_OCSP
+#define HAVE_CERTIFICATE_STATUS_REQUEST
+#endif
+
 /* do not use wolfssl defined app_main function used to test esp-wolfssl */
 #define NO_MAIN_DRIVER
 
