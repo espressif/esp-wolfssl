@@ -57,7 +57,7 @@ static const char *REQUEST = "GET " WEB_URL " HTTP/1.0\r\n"
 /* Root cert for api.github.com, taken from server_root_cert.pem
 
    The PEM file was extracted from the output of this command:
-   openssl s_client -showcerts -connect www.api.github.com:443 </dev/null
+   openssl s_client -showcerts -connect api.github.com:443 </dev/null
 
    The CA root cert is the last cert given in the chain of certs.
 
