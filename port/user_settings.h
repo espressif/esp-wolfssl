@@ -15,8 +15,32 @@
 #define WOLFSSL_ESPIDF
 #define WOLFSSL_ESPWROOM32
 
+/* Ensure ESP-IDF FreeRTOS headers are used */
+#ifndef PLATFORMIO
+#define PLATFORMIO
+#endif
+
+/* ESP-IDF uses FreeRTOS, but wolfSSL v5.8.4 expects pthread when WOLFSSL_ESPIDF is defined */
+/* Include pthread.h to provide pthread_t type */
+#include <pthread.h>
+
 #define BENCH_EMBEDDED
-#define USE_CERT_BUFFERS_2048
+
+/* ===== RSA 4096-bit Key Support (ISRG Root X1 uses 4096-bit RSA) ===== */
+/* Enable larger RSA key support */
+#define USE_CERT_BUFFERS_4096
+/* FP_MAX_BITS must be at least 2x the key size for math operations */
+#define FP_MAX_BITS 8192
+/* Enable RSA key generation support (needed for cert parsing) */
+#define WOLFSSL_KEY_GEN
+/* Enable certificate generation/parsing support */
+#define WOLFSSL_CERT_GEN
+/* Enable certificate request support */
+#define WOLFSSL_CERT_REQ
+/* Enable certificate extension support */
+#define WOLFSSL_CERT_EXT
+/* Allow unknown/undecoded X509v3 extensions - critical for modern CA certs */
+#define WOLFSSL_ALLOW_UNDECODED_EXTENSIONS
 
 /* TLS 1.3                                 */
 // #define WOLFSSL_TLS13
@@ -31,12 +55,15 @@
 #define NO_FILESYSTEM
 
 #define HAVE_AESGCM
+/* SHA algorithms - required for certificate signature verification */
+#define WOLFSSL_SHA256
 /* when you want to use SHA384 */
 #define WOLFSSL_SHA384
 #define WOLFSSL_SHA512
 #define HAVE_ECC
 #define HAVE_CURVE25519
-#define CURVE25519_SMALL
+/* CURVE25519_SMALL disabled - needed for load_3/load_4 functions used by ge_operations.c */
+/* #define CURVE25519_SMALL */
 #define HAVE_ED25519
 
 /* ALPN in wolfSSL is enabled by default, can be disabled with menuconfig */
@@ -52,6 +79,10 @@
 /* do not use wolfssl defined app_main function used to test esp-wolfssl */
 #define NO_MAIN_DRIVER
 
+/* Define NO_INLINE to use misc.h instead of including misc.c directly */
+/* This is needed because misc.c is excluded from the build */
+#define NO_INLINE
+
 /* you can disable folowing cipher suites by uncommenting following lines */
 // #define NO_DSA
 // #define NO_DH
@@ -63,13 +94,17 @@
 #define NO_RABBIT
 #define NO_OLD_TLS
 
-/* Allows of x509 certs (for wolfssl_get_verify_result function) */
-#define OPENSSL_EXTRA_X509_SMALL
+/* Full OpenSSL X509 compatibility is enabled via OPENSSL_EXTRA below */
+/* OPENSSL_EXTRA_X509_SMALL removed - it may limit CA certificate parsing */
 
 /* Only requires the peer certificate to validate to a trusted certificate.
  * If peer sends additional certificates not in the chain they are allowed,
  * but not trusted */
+/* Re-enable WOLFSSL_ALT_CERT_CHAINS for flexible chain verification */
 #define WOLFSSL_ALT_CERT_CHAINS
+
+/* Trust any peer certificate - allows partial chain verification */
+#define WOLFSSL_TRUST_PEER_CERT
 
 #define WOLFSSL_BASE64_ENCODE
 
@@ -86,7 +121,8 @@
 // #define OPENSSL_ALL
 
 /* Use smaller version of the certificate checking code */
-#define WOLFSSL_SMALL_CERT_VERIFY
+/* Disabled: WOLFSSL_SMALL_CERT_VERIFY can cause issues with CA certificate verification */
+/* #define WOLFSSL_SMALL_CERT_VERIFY */
 
 /* Reduces the stack and session cache used by wolfssl */
 #define WOLFSSL_SMALL_STACK
@@ -128,19 +164,24 @@
 
 /* debug options */
 // #define DEBUG_WOLFSSL
+// #define WOLFSSL_DEBUG_TLS
 // #define WOLFSSL_ESP32WROOM32_CRYPT_DEBUG
 /* #define WOLFSSL_ATECC_DEBUG */
 
 /* date/time                               */
-/* if it cannot adjust time in the device, */
-/* enable macro below                      */
+/* NO_ASN_TIME disables certificate date validation */
+/* This is needed because wolfSSL's time code has FreeRTOS include issues */
 #define NO_ASN_TIME
 #define XTIME time
 #define XGMTIME(c, t) gmtime((c))
 
 /* when you want not to use HW acceleration */
 #if !defined(CONFIG_IDF_TARGET_ESP32)
+    /* Disable ESP32 hardware crypto for non-ESP32 targets */
     #define NO_ESP32WROOM32_CRYPT
+    #define NO_WOLFSSL_ESP32WROOM32_CRYPT_HASH
+    #define NO_WOLFSSL_ESP32WROOM32_CRYPT_AES
+    #define NO_WOLFSSL_ESP32WROOM32_CRYPT_RSA_PRI
 #endif
 
 /* Turn off the sha acceleration for esp32 */
