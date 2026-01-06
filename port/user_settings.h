@@ -100,10 +100,9 @@
 /* Only requires the peer certificate to validate to a trusted certificate.
  * If peer sends additional certificates not in the chain they are allowed,
  * but not trusted */
-/* Re-enable WOLFSSL_ALT_CERT_CHAINS for flexible chain verification */
+/* Note: WOLFSSL_ALT_CERT_CHAINS can interfere with standard chain verification */
+/* Disabled to use standard certificate chain verification */
 #define WOLFSSL_ALT_CERT_CHAINS
-
-/* Trust any peer certificate - allows partial chain verification */
 #define WOLFSSL_TRUST_PEER_CERT
 
 #define WOLFSSL_BASE64_ENCODE
@@ -122,7 +121,7 @@
 
 /* Use smaller version of the certificate checking code */
 /* Disabled: WOLFSSL_SMALL_CERT_VERIFY can cause issues with CA certificate verification */
-/* #define WOLFSSL_SMALL_CERT_VERIFY */
+#define WOLFSSL_SMALL_CERT_VERIFY
 
 /* Reduces the stack and session cache used by wolfssl */
 #define WOLFSSL_SMALL_STACK
