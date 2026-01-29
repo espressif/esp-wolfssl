@@ -16,6 +16,7 @@ set(COMPONENT_ADD_INCLUDEDIRS
 list(APPEND COMPONENT_ADD_INCLUDEDIRS "include")
 
 set(COMPONENT_SRCEXCLUDE_1
+    # x86/x64 assembly files (not compatible with RISC-V/Xtensa)
     "wolfssl/wolfcrypt/src/aes_asm.S"
     "wolfssl/wolfcrypt/src/evp.c"
     "wolfssl/src/bio.c"
@@ -33,6 +34,10 @@ set(COMPONENT_SRCEXCLUDE_1
     "wolfssl/wolfcrypt/src/fe_x25519_asm.S"
     "wolfssl/wolfcrypt/src/wc_mlkem_asm.S"
     "wolfssl/wolfcrypt/src/wc_mldsa_asm.S"
+    # External library wrappers (require liboqs, etc. - we use native implementations)
+    "wolfssl/wolfcrypt/src/ext_mlkem.c"
+    "wolfssl/wolfcrypt/src/ext_lms.c"
+    "wolfssl/wolfcrypt/src/ext_xmss.c"
     )
 
 idf_component_register(SRC_DIRS "${COMPONENT_SRCDIRS}"

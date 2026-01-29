@@ -214,3 +214,56 @@
 
 /* adjust wait-timeout count if you see timeout in rsa hw acceleration */
 #define ESP_RSA_TIMEOUT_CNT    0x249F00
+
+/* ===== Post-Quantum Cryptography (PQC) Support ===== */
+/* These algorithms use native wolfSSL implementations (no external library needed).
+ * Code is only linked if the functions are actually called by the application.
+ *
+ * Note: PQC algorithms have larger memory requirements than classical crypto.
+ * Consider using WOLFSSL_SMALL_STACK and increasing task stack sizes if needed.
+ */
+
+/* SHA-3 and SHAKE (required for PQC algorithms) */
+#define WOLFSSL_SHA3
+#define WOLFSSL_SHAKE128
+#define WOLFSSL_SHAKE256
+
+/* ML-KEM (formerly Kyber) - Post-Quantum Key Encapsulation Mechanism
+ * Used for key exchange in hybrid TLS, standalone key encapsulation, etc.
+ * WOLFSSL_HAVE_MLKEM enables ML-KEM, WOLFSSL_WC_MLKEM uses native implementation.
+ * Security levels:
+ *   - KYBER512:  NIST Level 1 (128-bit security)
+ *   - KYBER768:  NIST Level 3 (192-bit security)
+ *   - KYBER1024: NIST Level 5 (256-bit security)
+ */
+#define WOLFSSL_HAVE_MLKEM
+#define WOLFSSL_WC_MLKEM
+#define WOLFSSL_KYBER512
+#define WOLFSSL_KYBER768
+#define WOLFSSL_KYBER1024
+
+/* ML-DSA (formerly Dilithium) - Post-Quantum Digital Signature Algorithm
+ * Used for signing/verification in certificates, authentication, etc.
+ * HAVE_DILITHIUM enables Dilithium support, WOLFSSL_WC_DILITHIUM uses native impl.
+ * Security levels:
+ *   - LEVEL2: NIST Level 2 (128-bit security, smaller signatures)
+ *   - LEVEL3: NIST Level 3 (192-bit security)
+ *   - LEVEL5: NIST Level 5 (256-bit security, larger signatures)
+ */
+#define HAVE_DILITHIUM
+#define WOLFSSL_WC_DILITHIUM
+#define WOLFSSL_DILITHIUM_LEVEL2
+#define WOLFSSL_DILITHIUM_LEVEL3
+#define WOLFSSL_DILITHIUM_LEVEL5
+
+/* Optional: Enable verify-only mode to reduce code size if you only need
+ * to verify signatures (not generate them). Useful for embedded devices
+ * that only verify server certificates with PQC signatures.
+ */
+/* #define WOLFSSL_DILITHIUM_VERIFY_ONLY */
+
+/* Optional: Other PQC signature algorithms (larger code/memory footprint)
+ * Uncomment if needed:
+ */
+/* #define HAVE_FALCON */
+/* #define HAVE_SPHINCS */
