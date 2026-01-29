@@ -11,9 +11,46 @@
 
 #include "sdkconfig.h"
 
+/* Disable ESP32 hardware crypto acceleration.
+ * These are also defined in CMakeLists.txt to ensure they're set before settings.h
+ * This is required because the ESP32 crypto peripheral APIs changed in IDF 6.x
+ * and the wolfSSL Espressif port files are not compatible */
+#ifndef NO_ESP32_CRYPT
+#define NO_ESP32_CRYPT
+#endif
+#ifndef NO_WOLFSSL_ESP32_CRYPT_HASH
+#define NO_WOLFSSL_ESP32_CRYPT_HASH
+#endif
+#ifndef NO_WOLFSSL_ESP32_CRYPT_AES
+#define NO_WOLFSSL_ESP32_CRYPT_AES
+#endif
+#ifndef NO_WOLFSSL_ESP32_CRYPT_RSA_PRI
+#define NO_WOLFSSL_ESP32_CRYPT_RSA_PRI
+#endif
+#ifndef NO_WOLFSSL_ESP32WROOM32_CRYPT
+#define NO_WOLFSSL_ESP32WROOM32_CRYPT
+#endif
+#ifndef NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_MP_MUL
+#define NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_MP_MUL
+#endif
+#ifndef NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_MULMOD
+#define NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_MULMOD
+#endif
+#ifndef NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_EXPTMOD
+#define NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_EXPTMOD
+#endif
+
 #undef WOLFSSL_ESPIDF
 #define WOLFSSL_ESPIDF
-#define WOLFSSL_ESPWROOM32
+
+/* Don't define WOLFSSL_ESPWROOM32 - it triggers hardware crypto which is
+ * incompatible with IDF 6.x (the Espressif port files use deprecated APIs) */
+/* #define WOLFSSL_ESPWROOM32 */
+
+/* Explicitly undefine hardware crypto macros that may have been set by settings.h */
+#undef WOLFSSL_ESP32WROOM32
+#undef WOLFSSL_ESP32WROOM32_CRYPT
+#undef WOLFSSL_ESP32_CRYPT
 
 /* Ensure ESP-IDF FreeRTOS headers are used */
 #ifndef PLATFORMIO
@@ -120,8 +157,9 @@
 // #define OPENSSL_ALL
 
 /* Use smaller version of the certificate checking code */
-/* Disabled: WOLFSSL_SMALL_CERT_VERIFY can cause issues with CA certificate verification */
-#define WOLFSSL_SMALL_CERT_VERIFY
+/* Disabled: WOLFSSL_SMALL_CERT_VERIFY causes issues with full chain verification
+ * when only the root CA is provided (e.g., leaf -> intermediate -> root) */
+/* #define WOLFSSL_SMALL_CERT_VERIFY */
 
 /* Reduces the stack and session cache used by wolfssl */
 #define WOLFSSL_SMALL_STACK
@@ -151,7 +189,8 @@
 #endif
 
 /* rsa primitive specific definition */
-#if defined(WOLFSSL_ESPWROOM32) || defined(WOLFSSL_ESPWROOM32SE)
+/* Note: ESP32 RSA primitives disabled for IDF 6.x compatibility */
+#if defined(WOLFSSL_ESPWROOM32SE)
     /* Define USE_FAST_MATH and SMALL_STACK                        */
     #define ESP32_USE_RSA_PRIMITIVE
     /* threshold for performance adjustment for hw primitive use   */

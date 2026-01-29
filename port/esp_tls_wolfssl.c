@@ -26,6 +26,13 @@
 #include "wolfssl/ssl.h"
 #include "wolfssl/wolfcrypt/settings.h"
 
+/* wolfSSL-specific error codes (not in esp_tls_errors.h for custom stack) */
+#define ESP_ERR_WOLFSSL_CTX_SETUP_FAILED             (ESP_ERR_ESP_TLS_BASE + 0x100)
+#define ESP_ERR_WOLFSSL_SSL_SETUP_FAILED             (ESP_ERR_ESP_TLS_BASE + 0x101)
+#define ESP_ERR_WOLFSSL_CERT_VERIFY_SETUP_FAILED     (ESP_ERR_ESP_TLS_BASE + 0x102)
+#define ESP_ERR_WOLFSSL_SSL_SET_HOSTNAME_FAILED      (ESP_ERR_ESP_TLS_BASE + 0x103)
+#define ESP_ERR_WOLFSSL_SSL_CONF_ALPN_PROTOCOLS_FAILED (ESP_ERR_ESP_TLS_BASE + 0x104)
+
 #if CONFIG_ESP_TLS_CUSTOM_STACK
 
 static unsigned char *global_cacert = NULL;
@@ -160,7 +167,7 @@ static esp_err_t esp_load_wolfssl_verify_buffer(esp_tls_t *tls, const unsigned c
 
 static void esp_wolfssl_cleanup(esp_tls_t *tls);
 
-static esp_err_t esp_wolfssl_create_ssl_handle(const char *hostname, size_t hostlen, const void *cfg, esp_tls_t *tls, void *server_params)
+static esp_err_t esp_wolfssl_create_ssl_handle(void *user_ctx, const char *hostname, size_t hostlen, const void *cfg, esp_tls_t *tls, void *server_params)
 {
     assert(cfg != NULL);
     assert(tls != NULL);
@@ -405,7 +412,7 @@ static esp_err_t set_server_config(esp_tls_cfg_server_t *cfg, esp_tls_t *tls)
     return ESP_OK;
 }
 
-static int esp_wolfssl_handshake(esp_tls_t *tls, const esp_tls_cfg_t *cfg)
+static int esp_wolfssl_handshake(void *user_ctx, esp_tls_t *tls, const esp_tls_cfg_t *cfg)
 {
     int ret;
     ret = wolfSSL_connect( (WOLFSSL *)tls->priv_ssl);
@@ -450,7 +457,7 @@ static int esp_wolfssl_handshake(esp_tls_t *tls, const esp_tls_cfg_t *cfg)
     }
 }
 
-static ssize_t esp_wolfssl_read(esp_tls_t *tls, char *data, size_t datalen)
+static ssize_t esp_wolfssl_read(void *user_ctx, esp_tls_t *tls, char *data, size_t datalen)
 {
     ssize_t ret = wolfSSL_read( (WOLFSSL *)tls->priv_ssl, (unsigned char *)data, datalen);
     if (ret < 0) {
@@ -463,7 +470,7 @@ static ssize_t esp_wolfssl_read(esp_tls_t *tls, char *data, size_t datalen)
     return ret;
 }
 
-static ssize_t esp_wolfssl_write(esp_tls_t *tls, const char *data, size_t datalen)
+static ssize_t esp_wolfssl_write(void *user_ctx, esp_tls_t *tls, const char *data, size_t datalen)
 {
     ssize_t ret = wolfSSL_write( (WOLFSSL *)tls->priv_ssl, (unsigned char *) data, datalen);
     if (ret <= 0) {
@@ -472,7 +479,7 @@ static ssize_t esp_wolfssl_write(esp_tls_t *tls, const char *data, size_t datale
     return ret;
 }
 
-static void esp_wolfssl_conn_delete(esp_tls_t *tls)
+static void esp_wolfssl_conn_delete(void *user_ctx, esp_tls_t *tls)
 {
     if (tls != NULL) {
         esp_wolfssl_cleanup(tls);
@@ -499,42 +506,45 @@ static void esp_wolfssl_cleanup(esp_tls_t *tls)
     wolfSSL_Cleanup();
 }
 
-static void esp_wolfssl_net_init(esp_tls_t *tls)
+static void esp_wolfssl_net_init(void *user_ctx, esp_tls_t *tls)
 {
+    (void)user_ctx;
     (void)tls;
 }
 
-static void *esp_wolfssl_get_ssl_context(esp_tls_t *tls)
+static void *esp_wolfssl_get_ssl_context(void *user_ctx, esp_tls_t *tls)
 {
+    (void)user_ctx;
     if (tls == NULL) {
         return NULL;
     }
     return (void*)tls->priv_ssl;
 }
 
-static ssize_t esp_wolfssl_get_bytes_avail(esp_tls_t *tls)
+static ssize_t esp_wolfssl_get_bytes_avail(void *user_ctx, esp_tls_t *tls)
 {
+    (void)user_ctx;
     if (!tls) {
         return ESP_FAIL;
     }
     return wolfSSL_pending( (WOLFSSL *)tls->priv_ssl);
 }
 
-static esp_err_t esp_wolfssl_init_global_ca_store(void)
+static esp_err_t esp_wolfssl_init_global_ca_store(void *user_ctx)
 {
     return ESP_OK;
 }
 
-static void esp_wolfssl_free_global_ca_store(void);
+static void esp_wolfssl_free_global_ca_store(void *user_ctx);
 
-static esp_err_t esp_wolfssl_set_global_ca_store(const unsigned char *cacert_pem_buf, const unsigned int cacert_pem_bytes)
+static esp_err_t esp_wolfssl_set_global_ca_store(void *user_ctx, const unsigned char *cacert_pem_buf, const unsigned int cacert_pem_bytes)
 {
     if (cacert_pem_buf == NULL) {
         ESP_LOGE(TAG, "cacert_pem_buf is null");
         return ESP_ERR_INVALID_ARG;
     }
     if (global_cacert != NULL) {
-        esp_wolfssl_free_global_ca_store();
+        esp_wolfssl_free_global_ca_store(user_ctx);
     }
 
     global_cacert = (unsigned char *)strndup((const char *)cacert_pem_buf, cacert_pem_bytes);
@@ -547,12 +557,12 @@ static esp_err_t esp_wolfssl_set_global_ca_store(const unsigned char *cacert_pem
     return ESP_OK;
 }
 
-static void *esp_wolfssl_get_global_ca_store(void)
+static void *esp_wolfssl_get_global_ca_store(void *user_ctx)
 {
     return global_cacert;
 }
 
-static void esp_wolfssl_free_global_ca_store(void)
+static void esp_wolfssl_free_global_ca_store(void *user_ctx)
 {
     if (global_cacert) {
         free(global_cacert);
@@ -561,12 +571,12 @@ static void esp_wolfssl_free_global_ca_store(void)
     }
 }
 
-static const int *esp_wolfssl_get_ciphersuites_list(void)
+static const int *esp_wolfssl_get_ciphersuites_list(void *user_ctx)
 {
     return NULL;
 }
 
-static int esp_wolfssl_server_session_create(esp_tls_cfg_server_t *cfg, int sockfd, esp_tls_t *tls)
+static int esp_wolfssl_server_session_create(void *user_ctx, esp_tls_cfg_server_t *cfg, int sockfd, esp_tls_t *tls)
 {
     if (tls == NULL || cfg == NULL) {
         return -1;
@@ -575,14 +585,13 @@ static int esp_wolfssl_server_session_create(esp_tls_cfg_server_t *cfg, int sock
     tls->sockfd = sockfd;
     esp_tls_server_params_t server_params = {};
     server_params.set_server_cfg = &set_server_config;
-    esp_err_t esp_ret = esp_wolfssl_create_ssl_handle(NULL, 0, cfg, tls, &server_params);
+    esp_err_t esp_ret = esp_wolfssl_create_ssl_handle(user_ctx, NULL, 0, cfg, tls, &server_params);
     if (esp_ret != ESP_OK) {
         ESP_LOGE(TAG, "create_ssl_handle failed, [0x%04X] (%s)", esp_ret, esp_err_to_name(esp_ret));
         tls->conn_state = ESP_TLS_FAIL;
         return -1;
     }
-    tls->read = esp_wolfssl_read;
-    tls->write = esp_wolfssl_write;
+    /* Note: tls->read and tls->write are set by esp_tls framework to use custom stack wrappers */
     int ret;
     while ((ret = wolfSSL_accept((WOLFSSL *)tls->priv_ssl)) != WOLFSSL_SUCCESS) {
         int err = wolfSSL_get_error((WOLFSSL *)tls->priv_ssl, ret);
@@ -596,8 +605,9 @@ static int esp_wolfssl_server_session_create(esp_tls_cfg_server_t *cfg, int sock
     return 0;
 }
 
-static void esp_wolfssl_server_session_delete(esp_tls_t *tls)
+static void esp_wolfssl_server_session_delete(void *user_ctx, esp_tls_t *tls)
 {
+    (void)user_ctx;
     if (tls != NULL) {
         esp_wolfssl_cleanup(tls);
     }
@@ -655,6 +665,7 @@ static inline unsigned int esp_wolfssl_psk_client_cb(WOLFSSL* ssl, const char* h
 #endif /* CONFIG_ESP_TLS_PSK_VERIFICATION */
 
 static const esp_tls_stack_ops_t esp_wolfssl_stack_ops = {
+    .version = ESP_TLS_STACK_OPS_VERSION,
     .create_ssl_handle = esp_wolfssl_create_ssl_handle,
     .handshake = esp_wolfssl_handshake,
     .read = esp_wolfssl_read,
@@ -674,7 +685,7 @@ static const esp_tls_stack_ops_t esp_wolfssl_stack_ops = {
 
 esp_err_t esp_wolfssl_register_stack(void)
 {
-    return esp_tls_register_stack(&esp_wolfssl_stack_ops);
+    return esp_tls_register_stack(&esp_wolfssl_stack_ops, NULL);
 }
 
 #endif /* CONFIG_ESP_TLS_CUSTOM_STACK */

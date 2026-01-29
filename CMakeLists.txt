@@ -1,7 +1,5 @@
 set(COMPONENT_SRCDIRS "wolfssl/src/"
                       "wolfssl/wolfcrypt/src"
-                      "wolfssl/wolfcrypt/src/port/Espressif/"
-                      "wolfssl/wolfcrypt/src/port/atmel/"
                       "port"
                       )
 
@@ -51,5 +49,15 @@ target_include_directories(${COMPONENT_LIB} PRIVATE "${esp_tls_dir}/private_incl
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-cpp -Wno-maybe-uninitialized)
 set_source_files_properties(wolfssl/src/ssl.c PROPERTIES COMPILE_FLAGS "-Wno-format-truncation -Wno-char-subscripts")
 set_source_files_properties(wolfssl/wolfcrypt/src/random.c PROPERTIES COMPILE_FLAGS "-Wno-implicit-function-declaration")
-set_source_files_properties(wolfssl/wolfcrypt/src/port/Espressif/esp32_aes.c PROPERTIES COMPILE_FLAGS "-Wno-incompatible-pointer-types")
-target_compile_definitions(${COMPONENT_LIB} PUBLIC WOLFSSL_USER_SETTINGS)
+# NO_ESP32_CRYPT must be defined BEFORE WOLFSSL_USER_SETTINGS to disable hardware crypto
+# The order matters: settings.h checks these macros before including user_settings.h
+target_compile_definitions(${COMPONENT_LIB} PUBLIC
+    NO_ESP32_CRYPT
+    NO_WOLFSSL_ESP32_CRYPT_HASH
+    NO_WOLFSSL_ESP32_CRYPT_AES
+    NO_WOLFSSL_ESP32_CRYPT_RSA_PRI
+    NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_MP_MUL
+    NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_MULMOD
+    NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_EXPTMOD
+    WOLFSSL_USER_SETTINGS
+)
