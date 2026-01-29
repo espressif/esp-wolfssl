@@ -27,9 +27,7 @@
 #ifndef NO_WOLFSSL_ESP32_CRYPT_RSA_PRI
 #define NO_WOLFSSL_ESP32_CRYPT_RSA_PRI
 #endif
-#ifndef NO_WOLFSSL_ESP32WROOM32_CRYPT
-#define NO_WOLFSSL_ESP32WROOM32_CRYPT
-#endif
+/* NO_WOLFSSL_ESP32WROOM32_CRYPT is deprecated in newer wolfSSL versions */
 #ifndef NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_MP_MUL
 #define NO_WOLFSSL_ESP32_CRYPT_RSA_PRI_MP_MUL
 #endif
@@ -48,8 +46,6 @@
 /* #define WOLFSSL_ESPWROOM32 */
 
 /* Explicitly undefine hardware crypto macros that may have been set by settings.h */
-#undef WOLFSSL_ESP32WROOM32
-#undef WOLFSSL_ESP32WROOM32_CRYPT
 #undef WOLFSSL_ESP32_CRYPT
 
 /* Ensure ESP-IDF FreeRTOS headers are used */
@@ -213,19 +209,8 @@
 #define XTIME time
 #define XGMTIME(c, t) gmtime((c))
 
-/* when you want not to use HW acceleration */
-#if !defined(CONFIG_IDF_TARGET_ESP32)
-    /* Disable ESP32 hardware crypto for non-ESP32 targets */
-    #define NO_ESP32WROOM32_CRYPT
-    #define NO_WOLFSSL_ESP32WROOM32_CRYPT_HASH
-    #define NO_WOLFSSL_ESP32WROOM32_CRYPT_AES
-    #define NO_WOLFSSL_ESP32WROOM32_CRYPT_RSA_PRI
-#endif
-
-/* Turn off the sha acceleration for esp32 */
-#define NO_WOLFSSL_ESP32WROOM32_CRYPT_HASH
-/* #define NO_WOLFSSL_ESP32WROOM32_CRYPT_AES */
-/* #define NO_WOLFSSL_ESP32WROOM32_CRYPT_RSA_PRI */
+/* Hardware crypto is disabled globally via macros at the top of this file */
+/* The new wolfSSL uses NO_ESP32_CRYPT, NO_WOLFSSL_ESP32_CRYPT_HASH, etc. */
 
 /* adjust wait-timeout count if you see timeout in rsa hw acceleration */
 #define ESP_RSA_TIMEOUT_CNT    0x249F00
