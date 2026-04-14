@@ -21,6 +21,7 @@
 #include "esp_tls_private.h"
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_private/startup_internal.h"
 #include "sdkconfig.h"
 
 #include "wolfssl/ssl.h"
@@ -686,6 +687,20 @@ static const esp_tls_stack_ops_t esp_wolfssl_stack_ops = {
 esp_err_t esp_wolfssl_register_stack(void)
 {
     return esp_tls_register_stack(&esp_wolfssl_stack_ops, NULL);
+}
+
+/* Auto-register the wolfSSL stack with esp-tls during early system init.
+ * This runs before app_main(), so applications can use esp-tls APIs without
+ * having to call esp_wolfssl_register_stack() explicitly. The CORE stage
+ * runs before the scheduler is started; esp_tls_register_stack() only stores
+ * a pointer, so it is safe to call this early. */
+ESP_SYSTEM_INIT_FN(esp_wolfssl_stack_auto_register, CORE, BIT(0), 115)
+{
+    esp_err_t ret = esp_tls_register_stack(&esp_wolfssl_stack_ops, NULL);
+    if (ret != ESP_OK) {
+        ESP_EARLY_LOGE(TAG, "Failed to auto-register wolfSSL stack: %s", esp_err_to_name(ret));
+    }
+    return ret;
 }
 
 #endif /* CONFIG_ESP_TLS_CUSTOM_STACK */

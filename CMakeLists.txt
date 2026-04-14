@@ -4,7 +4,7 @@ set(COMPONENT_SRCDIRS "wolfssl/src/"
                       )
 
 set(COMPONENT_REQUIRES lwip)
-set(COMPONENT_PRIV_REQUIRES "")
+set(COMPONENT_PRIV_REQUIRES esp_system)
 
 list(APPEND COMPONENT_REQUIRES esp-tls)
 
@@ -45,6 +45,7 @@ idf_component_register(SRC_DIRS "${COMPONENT_SRCDIRS}"
                         REQUIRES "${COMPONENT_REQUIRES}"
                         PRIV_REQUIRES "${COMPONENT_PRIV_REQUIRES}"
                         EXCLUDE_SRCS "${COMPONENT_SRCEXCLUDE_1}"
+                        WHOLE_ARCHIVE
                         )
 
 # Add esp-tls private_include directory to access esp_tls_private.h
