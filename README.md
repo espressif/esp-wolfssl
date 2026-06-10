@@ -29,9 +29,9 @@ This repository now uses upstream wolfSSL GitHub pointer as submodule and can st
  - ESP-IDF v4.1 and above is recommended version
 - Please refer to [example README](examples/README.md) for more information on setting up examples
 
-# Using esp-wolfssl as a custom esp-tls stack (ESP-IDF 5.x / 6.x)
+# Using esp-wolfssl as a custom esp-tls stack (ESP-IDF 6.x)
 
-From ESP-IDF 5.x onwards, `esp-tls` supports pluggable TLS backends via
+From ESP-IDF 6.x onwards, `esp-tls` supports pluggable TLS backends via
 `CONFIG_ESP_TLS_CUSTOM_STACK`. `esp-wolfssl` registers itself automatically
 with `esp-tls` during system init (via `ESP_SYSTEM_INIT_FN`), so applications
 that already use the `esp_tls_*` APIs (or any higher-level component built on
