@@ -1,11 +1,14 @@
 menu "wolfSSL"
 
     config TLS_STACK_WOLFSSL
-        bool "Include wolfSSL in ESP-TLS"
+        bool "Include wolfSSL in ESP-TLS (legacy, ESP-IDF < 6.x)"
         default y
         select FREERTOS_ENABLE_BACKWARD_COMPATIBILITY
         help
-            Includes wolfSSL in ESP-TLS so that it can be compiled with wolfSSL as its SSL/TLS library.
+            Legacy option for ESP-IDF releases where esp-tls offered wolfSSL as a built-in
+            SSL library choice. From ESP-IDF 6.x onwards this option has no effect; use
+            CONFIG_ESP_TLS_CUSTOM_STACK instead (esp-wolfssl then registers itself as the
+            custom TLS stack automatically). Kept for sdkconfig compatibility.
 
     config WOLFSSL_HAVE_ALPN
         bool "Enable ALPN (Application Layer Protocol Negotiation) in wolfSSL"
@@ -21,5 +24,20 @@ menu "wolfSSL"
             certificate's revocation status to the client and the client will automatically verify the servers certificate
             status based on the OCSP response forwarded to it.
             Note: This option enables the OCSP in stapling (v1) mode for the client hence the TLS server needs to support OCSP stapling v1 .
+
+    config WOLFSSL_HAVE_PQC
+        bool "Enable Post-Quantum Cryptography (ML-KEM, ML-DSA, SHA-3/SHAKE)"
+        default n
+        help
+            Enables native wolfSSL implementations of ML-KEM (formerly Kyber,
+            security levels 512/768/1024), ML-DSA (formerly Dilithium, levels
+            2/3/5) and the SHA-3/SHAKE hash functions they depend on.
+
+            Note: enabling this adds roughly 30 kB of flash even if the
+            application never uses a PQC algorithm, because the certificate
+            parsing code references the PQC verify routines once they are
+            compiled in. PQC algorithms also have noticeably larger memory
+            requirements than classical crypto; consider increasing the task
+            stack sizes when using them.
 
 endmenu # wolfSSL

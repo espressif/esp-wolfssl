@@ -45,34 +45,21 @@
  * incompatible with IDF 6.x (the Espressif port files use deprecated APIs) */
 /* #define WOLFSSL_ESPWROOM32 */
 
-/* Explicitly undefine hardware crypto macros that may have been set by settings.h */
-#undef WOLFSSL_ESP32_CRYPT
-
-/* Ensure ESP-IDF FreeRTOS headers are used */
+/* wolfSSL's FREERTOS code path (settings.h) includes <freertos/FreeRTOS.h>
+ * only when PLATFORMIO is defined and the bare "FreeRTOS.h" otherwise. Only
+ * the former is on the ESP-IDF include path, so define PLATFORMIO to steer
+ * wolfSSL headers to the IDF-style FreeRTOS include paths. */
 #ifndef PLATFORMIO
 #define PLATFORMIO
 #endif
 
-/* ESP-IDF uses FreeRTOS, but wolfSSL v5.8.4 expects pthread when WOLFSSL_ESPIDF is defined */
-/* Include pthread.h to provide pthread_t type */
-#include <pthread.h>
-
 #define BENCH_EMBEDDED
 
-/* ===== RSA 4096-bit Key Support (ISRG Root X1 uses 4096-bit RSA) ===== */
-/* Enable larger RSA key support */
-#define USE_CERT_BUFFERS_4096
-/* FP_MAX_BITS must be at least 2x the key size for math operations */
+/* ===== RSA 4096-bit certificate support ===== */
+/* Modern CA roots use 4096-bit RSA keys (e.g. ISRG Root X1, used by
+ * Let's Encrypt). FP_MAX_BITS must be at least 2x the largest key size. */
 #define FP_MAX_BITS 8192
-/* Enable RSA key generation support (needed for cert parsing) */
-#define WOLFSSL_KEY_GEN
-/* Enable certificate generation/parsing support */
-#define WOLFSSL_CERT_GEN
-/* Enable certificate request support */
-#define WOLFSSL_CERT_REQ
-/* Enable certificate extension support */
-#define WOLFSSL_CERT_EXT
-/* Allow unknown/undecoded X509v3 extensions - critical for modern CA certs */
+/* Allow unknown/undecoded X509v3 extensions - needed for modern CA certs */
 #define WOLFSSL_ALLOW_UNDECODED_EXTENSIONS
 
 /* TLS 1.3                                 */
@@ -112,8 +99,10 @@
 /* do not use wolfssl defined app_main function used to test esp-wolfssl */
 #define NO_MAIN_DRIVER
 
-/* Define NO_INLINE to use misc.h instead of including misc.c directly */
-/* This is needed because misc.c is excluded from the build */
+/* misc.c is compiled as a standalone translation unit (it is NOT excluded in
+ * CMakeLists.txt), so NO_INLINE must be defined: without it every other file
+ * inlines the misc functions and the standalone misc.o would produce
+ * duplicate definitions. */
 #define NO_INLINE
 
 /* you can disable folowing cipher suites by uncommenting following lines */
@@ -131,12 +120,11 @@
 /* OPENSSL_EXTRA_X509_SMALL removed - it may limit CA certificate parsing */
 
 /* Only requires the peer certificate to validate to a trusted certificate.
- * If peer sends additional certificates not in the chain they are allowed,
- * but not trusted */
-/* Note: WOLFSSL_ALT_CERT_CHAINS can interfere with standard chain verification */
-/* Disabled to use standard certificate chain verification */
+ * If the peer sends additional certificates not in the chain they are
+ * allowed, but not trusted. Needed so that verification succeeds when the
+ * application only provides the root CA while the server sends
+ * leaf -> intermediate -> (cross-signed) root. */
 #define WOLFSSL_ALT_CERT_CHAINS
-#define WOLFSSL_TRUST_PEER_CERT
 
 #define WOLFSSL_BASE64_ENCODE
 
@@ -203,9 +191,13 @@
 /* #define WOLFSSL_ATECC_DEBUG */
 
 /* date/time                               */
-/* NO_ASN_TIME disables certificate date validation */
-/* This is needed because wolfSSL's time code has FreeRTOS include issues */
-#define NO_ASN_TIME
+/* Certificate date (notBefore/notAfter) validation is enabled and uses the
+ * system clock via time()/gmtime(). The system time must be set (e.g. via
+ * SNTP) before TLS connections are made, otherwise certificate validation
+ * will fail with ASN_BEFORE_DATE_E / ASN_AFTER_DATE_E.
+ * If the device cannot maintain wall-clock time, define NO_ASN_TIME to skip
+ * date validation (NOT recommended: expired or not-yet-valid certificates
+ * would be accepted). */
 #define XTIME time
 #define XGMTIME(c, t) gmtime((c))
 
@@ -216,12 +208,16 @@
 #define ESP_RSA_TIMEOUT_CNT    0x249F00
 
 /* ===== Post-Quantum Cryptography (PQC) Support ===== */
-/* These algorithms use native wolfSSL implementations (no external library needed).
- * Code is only linked if the functions are actually called by the application.
+/* Opt-in via menuconfig -> Component config -> wolfSSL -> WOLFSSL_HAVE_PQC.
+ * These algorithms use native wolfSSL implementations (no external library
+ * needed). Note that once enabled, the certificate parsing code references
+ * the PQC routines, so they are linked in (~30 kB flash) even if the
+ * application never uses a PQC algorithm — hence the opt-in.
  *
  * Note: PQC algorithms have larger memory requirements than classical crypto.
  * Consider using WOLFSSL_SMALL_STACK and increasing task stack sizes if needed.
  */
+#ifdef CONFIG_WOLFSSL_HAVE_PQC
 
 /* SHA-3 and SHAKE (required for PQC algorithms) */
 #define WOLFSSL_SHA3
@@ -267,3 +263,5 @@
  */
 /* #define HAVE_FALCON */
 /* #define HAVE_SPHINCS */
+
+#endif /* CONFIG_WOLFSSL_HAVE_PQC */

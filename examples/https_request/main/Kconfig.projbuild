@@ -26,8 +26,10 @@ menu "Example Configuration"
     config EXAMPLE_SSL_PROTO_TLS1_3_CLIENT
         bool "Enable TLS 1.3 client test"
         default n
-        select MBEDTLS_SSL_PROTO_TLS1_3
+        select MBEDTLS_SSL_PROTO_TLS1_3 if ESP_TLS_USING_MBEDTLS
         help
             Enable TLS 1.3 client test support for the example.
+            Note: with the wolfSSL custom stack, TLS 1.3 is controlled by
+            WOLFSSL_TLS13 in port/user_settings.h instead.
 
 endmenu

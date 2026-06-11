@@ -45,10 +45,21 @@ idf_component_register(SRC_DIRS "${COMPONENT_SRCDIRS}"
                         REQUIRES "${COMPONENT_REQUIRES}"
                         PRIV_REQUIRES "${COMPONENT_PRIV_REQUIRES}"
                         EXCLUDE_SRCS "${COMPONENT_SRCEXCLUDE_1}"
-                        WHOLE_ARCHIVE
                         )
 
-# Add esp-tls private_include directory to access esp_tls_private.h
+if(CONFIG_ESP_TLS_CUSTOM_STACK)
+    # Nothing references esp_tls_wolfssl.c directly, so the linker would drop it
+    # (and the ESP_SYSTEM_INIT_FN auto-registration entry with it). Force just
+    # that object into the link instead of WHOLE_ARCHIVE-ing the entire
+    # component, which would pull every wolfSSL object (incl. unused PQC code)
+    # into the binary.
+    target_link_libraries(${COMPONENT_LIB} INTERFACE "-u esp_wolfssl_register_stack")
+endif()
+
+# esp_tls_private.h defines struct esp_tls; the custom-stack interface
+# (esp_tls_custom_stack.h) requires backends to populate tls->priv_ctx /
+# tls->priv_ssl, so this private header is needed by design.
+# Validated against ESP-IDF master (v6.2-dev).
 idf_component_get_property(esp_tls_dir esp-tls COMPONENT_DIR)
 target_include_directories(${COMPONENT_LIB} PRIVATE "${esp_tls_dir}/private_include")
 

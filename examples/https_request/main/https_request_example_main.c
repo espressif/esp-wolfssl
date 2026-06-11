@@ -317,6 +317,13 @@ static void https_request_task(void *pvparameters)
     vTaskDelete(NULL);
 }
 
+/* esp_timer callbacks must be void (*)(void *); wrap the esp_err_t-returning
+ * helper instead of casting the function pointer (undefined behavior). */
+static void fetch_and_store_time_in_nvs_cb(void *arg)
+{
+    (void)fetch_and_store_time_in_nvs(arg);
+}
+
 void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
@@ -335,7 +342,7 @@ void app_main(void)
     }
 
     const esp_timer_create_args_t nvs_update_timer_args = {
-            .callback = (void *)&fetch_and_store_time_in_nvs,
+            .callback = &fetch_and_store_time_in_nvs_cb,
     };
 
     esp_timer_handle_t nvs_update_timer;

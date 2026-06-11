@@ -19,6 +19,7 @@
 #include "esp_tls_custom_stack.h"
 #include "esp_tls_errors.h"
 #include "esp_tls_private.h"
+#include "esp_tls_error_capture_internal.h"
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_private/startup_internal.h"
@@ -27,12 +28,15 @@
 #include "wolfssl/ssl.h"
 #include "wolfssl/wolfcrypt/settings.h"
 
-/* wolfSSL-specific error codes (not in esp_tls_errors.h for custom stack) */
+/* wolfSSL-specific error codes (not in esp_tls_errors.h for custom stack).
+ * Offset 0x100 is far above the mbedTLS codes in esp_tls_errors.h (<= 0x1D),
+ * so these cannot collide with framework-defined codes. */
 #define ESP_ERR_WOLFSSL_CTX_SETUP_FAILED             (ESP_ERR_ESP_TLS_BASE + 0x100)
 #define ESP_ERR_WOLFSSL_SSL_SETUP_FAILED             (ESP_ERR_ESP_TLS_BASE + 0x101)
 #define ESP_ERR_WOLFSSL_CERT_VERIFY_SETUP_FAILED     (ESP_ERR_ESP_TLS_BASE + 0x102)
 #define ESP_ERR_WOLFSSL_SSL_SET_HOSTNAME_FAILED      (ESP_ERR_ESP_TLS_BASE + 0x103)
 #define ESP_ERR_WOLFSSL_SSL_CONF_ALPN_PROTOCOLS_FAILED (ESP_ERR_ESP_TLS_BASE + 0x104)
+#define ESP_ERR_WOLFSSL_SSL_HANDSHAKE_FAILED         (ESP_ERR_ESP_TLS_BASE + 0x105)
 
 #if CONFIG_ESP_TLS_CUSTOM_STACK
 
@@ -47,6 +51,10 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 static SemaphoreHandle_t tls_conn_lock;
+/* Set while a PSK connection holds tls_conn_lock. Lets esp_wolfssl_cleanup()
+ * release the lock only when it was actually taken (error before/during the
+ * handshake); non-PSK connections must not give a mutex they never took. */
+static bool tls_conn_lock_held = false;
 static inline unsigned int esp_wolfssl_psk_client_cb(WOLFSSL* ssl, const char* hint, char* identity,
         unsigned int id_max_len, unsigned char* key,unsigned int key_max_len);
 static esp_err_t esp_wolfssl_set_cipher_list(WOLFSSL_CTX *ctx);
@@ -67,7 +75,10 @@ static esp_err_t set_server_config(esp_tls_cfg_server_t *cfg, esp_tls_t *tls);
 static void wolfssl_print_error_msg(int error)
 {
 #if (CONFIG_LOG_DEFAULT_LEVEL_DEBUG || CONFIG_LOG_DEFAULT_LEVEL_VERBOSE)
-    static char error_buf[100];
+    /* wolfSSL_ERR_error_string() assumes the caller buffer holds at least
+     * WOLFSSL_MAX_ERROR_SZ bytes (200 on ESP-IDF). A smaller (or shared
+     * static) buffer would risk overflow / races between tasks. */
+    char error_buf[WOLFSSL_MAX_ERROR_SZ];
     ESP_LOGE(TAG, "(%d) : %s", error, ERR_error_string(error, error_buf));
 #endif
 }
@@ -90,13 +101,27 @@ static inline ssize_t esp_tls_convert_wolfssl_err_to_ssize(int wolfssl_error)
     }
 }
 
+/* Bounded search for a PEM header. The input may be raw DER with no NUL
+ * terminator, so strstr() on it could read past the end of the buffer. */
+static bool esp_wolfssl_buf_has_pem_header(const unsigned char *buf, unsigned int len, const char *header)
+{
+    size_t header_len = strlen(header);
+    if (buf == NULL || len < header_len) {
+        return false;
+    }
+    for (unsigned int i = 0; i + header_len <= len; i++) {
+        if (memcmp(buf + i, header, header_len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static esp_err_t esp_load_wolfssl_verify_buffer(esp_tls_t *tls, const unsigned char *cert_buf, unsigned int cert_len, x509_file_type_t type, int *err_ret)
 {
     int wolf_fileformat = WOLFSSL_FILETYPE_DEFAULT;
     if (type == FILE_TYPE_SELF_KEY) {
-        if (cert_len > 0 && cert_buf[cert_len - 1] == '\0' && strstr( (const char *) cert_buf, "-----BEGIN " )) {
-            wolf_fileformat = WOLFSSL_FILETYPE_PEM;
-        } else if (strstr( (const char *) cert_buf, "-----BEGIN " )) {
+        if (esp_wolfssl_buf_has_pem_header(cert_buf, cert_len, "-----BEGIN ")) {
             wolf_fileformat = WOLFSSL_FILETYPE_PEM;
         } else {
             wolf_fileformat = WOLFSSL_FILETYPE_ASN1;
@@ -108,7 +133,7 @@ static esp_err_t esp_load_wolfssl_verify_buffer(esp_tls_t *tls, const unsigned c
         return ESP_FAIL;
     } else {
         /* Check for PEM format by looking for PEM header */
-        if (strstr( (const char *) cert_buf, "-----BEGIN CERTIFICATE-----" )) {
+        if (esp_wolfssl_buf_has_pem_header(cert_buf, cert_len, "-----BEGIN CERTIFICATE-----")) {
             wolf_fileformat = WOLFSSL_FILETYPE_PEM;
         } else {
             wolf_fileformat = WOLFSSL_FILETYPE_ASN1;
@@ -230,6 +255,10 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
     }
 
     if (cfg->use_global_ca_store == true) {
+        if (global_cacert == NULL) {
+            ESP_LOGE(TAG, "global_ca_store requested but not set; call esp_tls_set_global_ca_store() first");
+            return ESP_ERR_INVALID_STATE;
+        }
         if ((esp_load_wolfssl_verify_buffer(tls, global_cacert, global_cacert_pem_bytes, FILE_TYPE_CA_CERT, &ret)) != ESP_OK) {
             ESP_LOGE(TAG, "Failed to load CA certificate from global store, error: %d", ret);
             wolfssl_print_error_msg(ret);
@@ -253,8 +282,11 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
             ESP_LOGE(TAG, "Failed to acquire TLS connection lock");
             return ESP_ERR_TIMEOUT;
         }
-        if((cfg->psk_hint_key->key_size > PSK_MAX_KEY_LEN) || (strlen(cfg->psk_hint_key->hint) > PSK_MAX_ID_LEN)) {
-            ESP_LOGE(TAG, "PSK key length must be <= %d and identity hint length must be <= %d", PSK_MAX_KEY_LEN, PSK_MAX_ID_LEN);
+        tls_conn_lock_held = true;
+        /* hint must be strictly shorter than PSK_MAX_ID_LEN so that
+         * psk_id_str stays NUL-terminated */
+        if((cfg->psk_hint_key->key_size > PSK_MAX_KEY_LEN) || (strlen(cfg->psk_hint_key->hint) >= PSK_MAX_ID_LEN)) {
+            ESP_LOGE(TAG, "PSK key length must be <= %d and identity hint length must be < %d", PSK_MAX_KEY_LEN, PSK_MAX_ID_LEN);
             return ESP_ERR_INVALID_ARG;
         }
         psk_key_max_len = cfg->psk_hint_key->key_size;
@@ -314,8 +346,11 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
             free(use_host);
             return ESP_ERR_WOLFSSL_SSL_SET_HOSTNAME_FAILED;
         }
-        if ((ret = wolfSSL_CTX_UseSNI(tls->priv_ctx, WOLFSSL_SNI_HOST_NAME, use_host, strlen(use_host))) != WOLFSSL_SUCCESS) {
-            ESP_LOGE(TAG, "wolfSSL_CTX_UseSNI failed, returned %d", ret);
+        /* Set SNI on the SSL object (already created above) rather than on the
+         * CTX: CTX-level extensions are intended for SSL objects created
+         * afterwards. */
+        if ((ret = wolfSSL_UseSNI(tls->priv_ssl, WOLFSSL_SNI_HOST_NAME, use_host, strlen(use_host))) != WOLFSSL_SUCCESS) {
+            ESP_LOGE(TAG, "wolfSSL_UseSNI failed, returned %d", ret);
             free(use_host);
             return ESP_ERR_WOLFSSL_SSL_SET_HOSTNAME_FAILED;
         }
@@ -425,10 +460,16 @@ static int esp_wolfssl_handshake(void *user_ctx, esp_tls_t *tls, const esp_tls_c
         if (err != WOLFSSL_ERROR_WANT_READ && err != WOLFSSL_ERROR_WANT_WRITE) {
             ESP_LOGE(TAG, "wolfSSL_connect failed, error: %d", err);
             wolfssl_print_error_msg(err);
+            /* Record the failure in the esp-tls error handle so that
+             * esp_tls_get_and_clear_last_error() reports it to applications
+             * (mirrors what the mbedTLS backend does). */
+            ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_CUSTOM_STACK, -err);
+            ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_WOLFSSL_SSL_HANDSHAKE_FAILED);
 
             if (cfg->crt_bundle_attach != NULL || cfg->cacert_buf != NULL || cfg->use_global_ca_store == true) {
                 int flags = wolfSSL_get_verify_result( (WOLFSSL *)tls->priv_ssl);
                 if (flags != X509_V_OK) {
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_CUSTOM_STACK_CERT_FLAGS, flags);
                     switch (flags) {
                         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
                             ESP_LOGE(TAG, "Certificate issuer not found in CA store");
@@ -463,10 +504,19 @@ static ssize_t esp_wolfssl_read(void *user_ctx, esp_tls_t *tls, char *data, size
     ssize_t ret = wolfSSL_read( (WOLFSSL *)tls->priv_ssl, (unsigned char *)data, datalen);
     if (ret < 0) {
         int err = wolfSSL_get_error( (WOLFSSL *)tls->priv_ssl, ret);
+        /* peer sent close notify */
         if (err == WOLFSSL_ERROR_ZERO_RETURN) {
             return 0;
         }
-        return esp_tls_convert_wolfssl_err_to_ssize(ret);
+        if (err != WOLFSSL_ERROR_WANT_READ && err != WOLFSSL_ERROR_WANT_WRITE) {
+            ESP_LOGE(TAG, "wolfSSL_read failed, error: %d", err);
+            wolfssl_print_error_msg(err);
+            ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_CUSTOM_STACK, -err);
+        }
+        /* Convert the wolfSSL_get_error() code, NOT the wolfSSL_read() return
+         * value (which is just -1 / WOLFSSL_FATAL_ERROR), so that WANT_READ /
+         * WANT_WRITE are propagated to non-blocking callers correctly. */
+        return esp_tls_convert_wolfssl_err_to_ssize(err);
     }
     return ret;
 }
@@ -475,7 +525,13 @@ static ssize_t esp_wolfssl_write(void *user_ctx, esp_tls_t *tls, const char *dat
 {
     ssize_t ret = wolfSSL_write( (WOLFSSL *)tls->priv_ssl, (unsigned char *) data, datalen);
     if (ret <= 0) {
-        return esp_tls_convert_wolfssl_err_to_ssize(ret);
+        int err = wolfSSL_get_error( (WOLFSSL *)tls->priv_ssl, ret);
+        if (err != WOLFSSL_ERROR_WANT_READ && err != WOLFSSL_ERROR_WANT_WRITE) {
+            ESP_LOGE(TAG, "wolfSSL_write failed, error: %d", err);
+            wolfssl_print_error_msg(err);
+            ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_CUSTOM_STACK, -err);
+        }
+        return esp_tls_convert_wolfssl_err_to_ssize(err);
     }
     return ret;
 }
@@ -493,7 +549,10 @@ static void esp_wolfssl_cleanup(esp_tls_t *tls)
         return;
     }
 #if defined(CONFIG_ESP_TLS_PSK_VERIFICATION)
-    xSemaphoreGive(tls_conn_lock);
+    if (tls_conn_lock_held) {
+        tls_conn_lock_held = false;
+        xSemaphoreGive(tls_conn_lock);
+    }
 #endif /* CONFIG_ESP_TLS_PSK_VERIFICATION */
     if (tls->priv_ssl) {
         wolfSSL_shutdown( (WOLFSSL *)tls->priv_ssl);
@@ -504,7 +563,14 @@ static void esp_wolfssl_cleanup(esp_tls_t *tls)
         wolfSSL_CTX_free( (WOLFSSL_CTX *)tls->priv_ctx);
         tls->priv_ctx = NULL;
     }
-    wolfSSL_Cleanup();
+    /* Do NOT call wolfSSL_Cleanup() here. It tears down process-global wolfSSL
+     * state (wolfCrypt mutexes, RNG, session cache). Calling it per connection
+     * crashes any *other* wolfSSL connection that is concurrently open (e.g. a
+     * second esp_tls client, or a server handling multiple clients) the moment
+     * it next locks one of those now-freed global mutexes. wolfSSL_Init() is
+     * reference-counted and safe to call per connection (see
+     * esp_wolfssl_create_ssl_handle); the matching global teardown is simply
+     * left to process exit, which is the norm for a long-running TLS backend. */
 }
 
 static void esp_wolfssl_net_init(void *user_ctx, esp_tls_t *tls)
@@ -548,11 +614,15 @@ static esp_err_t esp_wolfssl_set_global_ca_store(void *user_ctx, const unsigned 
         esp_wolfssl_free_global_ca_store(user_ctx);
     }
 
-    global_cacert = (unsigned char *)strndup((const char *)cacert_pem_buf, cacert_pem_bytes);
+    /* Plain malloc+memcpy rather than strndup: strndup() stops at the first
+     * NUL byte, which would silently truncate DER (binary) certificates. The
+     * extra NUL terminator keeps PEM parsing safe. */
+    global_cacert = (unsigned char *)malloc(cacert_pem_bytes + 1);
     if (!global_cacert) {
-        return ESP_FAIL;
+        return ESP_ERR_NO_MEM;
     }
-
+    memcpy(global_cacert, cacert_pem_buf, cacert_pem_bytes);
+    global_cacert[cacert_pem_bytes] = '\0';
     global_cacert_pem_bytes  = cacert_pem_bytes;
 
     return ESP_OK;
@@ -592,11 +662,18 @@ static int esp_wolfssl_server_session_create(void *user_ctx, esp_tls_cfg_server_
         tls->conn_state = ESP_TLS_FAIL;
         return -1;
     }
-    /* Note: tls->read and tls->write are set by esp_tls framework to use custom stack wrappers */
+    /* The esp-tls framework only wires tls->read/tls->write on the CLIENT path
+     * (esp_tls_conn_new_sync). For server sessions the backend must set them
+     * itself, otherwise esp_tls_conn_read()/esp_tls_conn_write() see a NULL
+     * pointer and return -1. (The mbedTLS backend does the same in its own
+     * server_session_init.) These are the framework's custom-stack wrappers,
+     * which dispatch into esp_wolfssl_read()/esp_wolfssl_write(). */
+    tls->read = esp_tls_custom_stack_read;
+    tls->write = esp_tls_custom_stack_write;
     int ret;
     while ((ret = wolfSSL_accept((WOLFSSL *)tls->priv_ssl)) != WOLFSSL_SUCCESS) {
         int err = wolfSSL_get_error((WOLFSSL *)tls->priv_ssl, ret);
-        if (err != WOLFSSL_ERROR_WANT_READ && ret != WOLFSSL_ERROR_WANT_WRITE) {
+        if (err != WOLFSSL_ERROR_WANT_READ && err != WOLFSSL_ERROR_WANT_WRITE) {
             ESP_LOGE(TAG, "wolfSSL_accept returned %d, error code: %d", ret, err);
             wolfssl_print_error_msg(err);
             tls->conn_state = ESP_TLS_FAIL;
@@ -626,13 +703,28 @@ static esp_err_t esp_wolfssl_set_cipher_list(WOLFSSL_CTX *ctx)
 #else
     defaultCipherList = "DHE-PSK-AES128-GCM-SHA256";
 #endif
+#elif defined(HAVE_AESGCM) && defined(HAVE_ECC)
+    /* wolfSSL's ESP-IDF defaults define NO_DH, so the DHE-PSK suite above is
+     * unavailable in the default build. ECDHE-PSK (RFC 8442) provides forward
+     * secrecy without DH and is built whenever ECC + AES-GCM + PSK are on.
+     * Without this branch the fallback would be a static PSK suite, which is
+     * not compiled in (WOLFSSL_STATIC_PSK is intentionally disabled), leaving
+     * PSK connections with no usable cipher suite at all. */
+#ifdef WOLFSSL_TLS13
+    defaultCipherList = "ECDHE-PSK-AES128-GCM-SHA256:"
+                                    "TLS13-AES128-GCM-SHA256";
+#else
+    defaultCipherList = "ECDHE-PSK-AES128-GCM-SHA256";
+#endif
 #elif defined(HAVE_NULL_CIPHER)
     defaultCipherList = "PSK-NULL-SHA256";
 #else
     defaultCipherList = "PSK-AES128-CBC-SHA256";
 #endif
     if ((ret = wolfSSL_CTX_set_cipher_list(ctx,defaultCipherList)) != WOLFSSL_SUCCESS) {
-        wolfSSL_CTX_free(ctx);
+        /* Do not free ctx here: the caller still holds it in tls->priv_ctx and
+         * esp_wolfssl_cleanup() frees it on the error path. Freeing it here as
+         * well would be a double free. */
         ESP_LOGE(TAG, "Failed to set cipher list, error: %d", ret);
         wolfssl_print_error_msg(ret);
         return ESP_FAIL;
@@ -654,12 +746,15 @@ static inline unsigned int esp_wolfssl_psk_client_cb(WOLFSSL* ssl, const char* h
 {
     (void)ssl;
     (void)hint;
-    (void)key_max_len;
 
-    memcpy(identity, psk_id_str, id_max_len);
-    for(int count = 0; count < psk_key_max_len; count ++) {
-         key[count] = psk_key_array[count];
+    unsigned int id_len = strlen(psk_id_str);
+    if (id_len >= id_max_len || psk_key_max_len > key_max_len) {
+        ESP_LOGE(TAG, "PSK identity or key does not fit in the wolfSSL buffers");
+        return 0;
     }
+    memcpy(identity, psk_id_str, id_len + 1);
+    memcpy(key, psk_key_array, psk_key_max_len);
+    tls_conn_lock_held = false;
     xSemaphoreGive(tls_conn_lock);
     return psk_key_max_len;
 }
@@ -689,12 +784,15 @@ esp_err_t esp_wolfssl_register_stack(void)
     return esp_tls_register_stack(&esp_wolfssl_stack_ops, NULL);
 }
 
-/* Auto-register the wolfSSL stack with esp-tls during early system init.
+/* Auto-register the wolfSSL stack with esp-tls during system init.
  * This runs before app_main(), so applications can use esp-tls APIs without
- * having to call esp_wolfssl_register_stack() explicitly. The CORE stage
- * runs before the scheduler is started; esp_tls_register_stack() only stores
- * a pointer, so it is safe to call this early. */
-ESP_SYSTEM_INIT_FN(esp_wolfssl_stack_auto_register, CORE, BIT(0), 115)
+ * having to call esp_wolfssl_register_stack() explicitly. The SECONDARY
+ * stage is the one intended for component-level init functions (the CORE
+ * stage is reserved for ESP-IDF internals and its entries are validated
+ * against an internal list in IDF CI). esp_tls_register_stack() only stores
+ * a pointer, so it has no ordering requirements beyond running before
+ * app_main(). */
+ESP_SYSTEM_INIT_FN(esp_wolfssl_stack_auto_register, SECONDARY, BIT(0), 200)
 {
     esp_err_t ret = esp_tls_register_stack(&esp_wolfssl_stack_ops, NULL);
     if (ret != ESP_OK) {
