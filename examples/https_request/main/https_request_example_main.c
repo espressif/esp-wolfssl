@@ -50,12 +50,14 @@
 #ifdef CONFIG_EXAMPLE_SSL_PROTO_TLS1_3_CLIENT
 #define WEB_SERVER "tls13.browserleaks.com"
 #define WEB_PORT "443"
-#define WEB_URL "https://tls13.browserleaks.com/tls"
+#define WEB_URL_PATH "/tls"
 #else
-#define WEB_SERVER "howsmyssl.com"
+#define WEB_SERVER "www.howsmyssl.com"
 #define WEB_PORT "443"
-#define WEB_URL "https://www.howsmyssl.com/a/check"
+#define WEB_URL_PATH "/a/check"
 #endif
+/* Full URL (used by esp_tls_conn_http_new_sync to pick host and port) */
+#define WEB_URL "https://" WEB_SERVER WEB_URL_PATH
 
 #define SERVER_URL_MAX_SZ 256
 
@@ -64,7 +66,10 @@ static const char *TAG = "example";
 /* Timer interval once every day (24 Hours) */
 #define TIME_PERIOD (86400000000ULL)
 
-static const char HOWSMYSSL_REQUEST[] = "GET " WEB_URL " HTTP/1.1\r\n"
+/* Origin-form request line (path only); the Host header carries the same
+ * hostname the TLS connection/SNI uses. Absolute URLs in the request line
+ * are proxy-form and not guaranteed to be accepted by origin servers. */
+static const char HOWSMYSSL_REQUEST[] = "GET " WEB_URL_PATH " HTTP/1.1\r\n"
                              "Host: "WEB_SERVER"\r\n"
                              "User-Agent: esp-idf/1.0 esp32\r\n"
                              "\r\n";
@@ -290,9 +295,14 @@ static void https_request_task(void *pvparameters)
     char url_buf[SERVER_URL_MAX_SZ];
     if (strcmp(CONFIG_EXAMPLE_LOCAL_SERVER_URL, "FROM_STDIN") == 0) {
         example_configure_stdin_stdout();
-        fgets(url_buf, SERVER_URL_MAX_SZ, stdin);
-        int len = strlen(url_buf);
-        url_buf[len - 1] = '\0';
+        if (fgets(url_buf, SERVER_URL_MAX_SZ, stdin) == NULL) {
+            ESP_LOGE(TAG, "Failed to read server URL from stdin");
+            abort();
+        }
+        size_t len = strlen(url_buf);
+        if (len > 0 && url_buf[len - 1] == '\n') {
+            url_buf[len - 1] = '\0';   /* strip trailing newline (guard against len==0) */
+        }
         server_url = url_buf;
     } else {
         ESP_LOGE(TAG, "Configuration mismatch: invalid url for local server");

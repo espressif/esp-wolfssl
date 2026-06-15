@@ -18,8 +18,14 @@ extern "C" {
 /**
  * @brief Register wolfSSL as the custom TLS stack for ESP-TLS
  *
- * This function registers wolfSSL as the TLS stack implementation for ESP-TLS.
- * It must be called before creating any TLS connections.
+ * Calling this function is normally NOT needed: when this component is part
+ * of the build, wolfSSL registers itself with ESP-TLS automatically during
+ * system init (via ESP_SYSTEM_INIT_FN), before app_main() runs. This function
+ * is provided for explicit/manual registration, e.g. to retry after the
+ * automatic registration failed, or for code that wants a link-time
+ * dependency on the wolfSSL backend.
+ *
+ * If called, it must be called before creating any TLS connections.
  *
  * @return
  *         - ESP_OK: wolfSSL stack registered successfully

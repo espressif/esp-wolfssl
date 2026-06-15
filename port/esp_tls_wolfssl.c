@@ -250,8 +250,11 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
     }
 
     if (cfg->crt_bundle_attach != NULL) {
-        ESP_LOGE(TAG,"use_crt_bundle not supported in wolfssl");
-        return ESP_FAIL;
+        /* The IDF certificate bundle is mbedTLS-specific (mbedtls parsing
+         * callbacks + bundle format), so it cannot be attached to wolfSSL. */
+        ESP_LOGE(TAG, "crt_bundle_attach is not supported by the wolfSSL backend; "
+                      "use cacert_buf or esp_tls_set_global_ca_store() instead");
+        return ESP_ERR_NOT_SUPPORTED;
     }
 
     if (cfg->use_global_ca_store == true) {
@@ -277,6 +280,12 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
         if(cfg->psk_hint_key->key == NULL || cfg->psk_hint_key->hint == NULL || cfg->psk_hint_key->key_size <= 0) {
             ESP_LOGE(TAG, "Please provide appropriate key, keysize and hint to use PSK");
             return ESP_FAIL;
+        }
+        if (tls_conn_lock == NULL) {
+            /* Mutex creation in the constructor failed (out of memory at
+             * boot); taking a NULL semaphore would assert inside FreeRTOS. */
+            ESP_LOGE(TAG, "TLS connection lock was never created, cannot use PSK");
+            return ESP_ERR_INVALID_STATE;
         }
         if ((xSemaphoreTake(tls_conn_lock, 1000/portTICK_PERIOD_MS) != pdTRUE)) {
             ESP_LOGE(TAG, "Failed to acquire TLS connection lock");
@@ -467,27 +476,31 @@ static int esp_wolfssl_handshake(void *user_ctx, esp_tls_t *tls, const esp_tls_c
             ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_WOLFSSL_SSL_HANDSHAKE_FAILED);
 
             if (cfg->crt_bundle_attach != NULL || cfg->cacert_buf != NULL || cfg->use_global_ca_store == true) {
-                int flags = wolfSSL_get_verify_result( (WOLFSSL *)tls->priv_ssl);
-                if (flags != X509_V_OK) {
-                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_CUSTOM_STACK_CERT_FLAGS, flags);
+                /* wolfSSL_get_verify_result() returns the native WOLFSSL_X509_V_*
+                 * codes, so match against those (the OpenSSL-compat X509_V_*
+                 * macros have different values for some entries, e.g.
+                 * INVALID_CA, which would make those cases unreachable). */
+                long flags = wolfSSL_get_verify_result( (WOLFSSL *)tls->priv_ssl);
+                if (flags != WOLFSSL_X509_V_OK) {
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_CUSTOM_STACK_CERT_FLAGS, (int)flags);
                     switch (flags) {
-                        case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+                        case WOLFSSL_X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
                             ESP_LOGE(TAG, "Certificate issuer not found in CA store");
                             break;
-                        case X509_V_ERR_INVALID_CA:
+                        case WOLFSSL_X509_V_ERR_INVALID_CA:
                             ESP_LOGE(TAG, "Invalid CA certificate");
                             break;
-                        case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
+                        case WOLFSSL_X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
                             ESP_LOGE(TAG, "Unable to verify certificate signature");
                             break;
-                        case X509_V_ERR_CERT_HAS_EXPIRED:
+                        case WOLFSSL_X509_V_ERR_CERT_HAS_EXPIRED:
                             ESP_LOGE(TAG, "Certificate has expired");
                             break;
-                        case X509_V_ERR_CERT_NOT_YET_VALID:
+                        case WOLFSSL_X509_V_ERR_CERT_NOT_YET_VALID:
                             ESP_LOGE(TAG, "Certificate not yet valid");
                             break;
                         default:
-                            ESP_LOGE(TAG, "Certificate verification failed, error code: %d", flags);
+                            ESP_LOGE(TAG, "Certificate verification failed, error code: %ld", flags);
                             break;
                     }
                 }

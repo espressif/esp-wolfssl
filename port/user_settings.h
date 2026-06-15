@@ -105,7 +105,7 @@
  * duplicate definitions. */
 #define NO_INLINE
 
-/* you can disable folowing cipher suites by uncommenting following lines */
+/* you can disable following cipher suites by uncommenting following lines */
 // #define NO_DSA
 // #define NO_DH
 

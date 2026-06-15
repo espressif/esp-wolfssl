@@ -4,7 +4,9 @@ set(COMPONENT_SRCDIRS "wolfssl/src/"
                       )
 
 set(COMPONENT_REQUIRES lwip)
-set(COMPONENT_PRIV_REQUIRES esp_system)
+# esp_system: ESP_SYSTEM_INIT_FN auto-registration; esp_hw_support: esp_fill_random()
+# used by esp_wolfssl_seed.c (wc_GenerateSeed).
+set(COMPONENT_PRIV_REQUIRES esp_system esp_hw_support)
 
 list(APPEND COMPONENT_REQUIRES esp-tls)
 
