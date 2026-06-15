@@ -16,6 +16,21 @@ extern "C" {
 #if CONFIG_ESP_TLS_CUSTOM_STACK
 
 /**
+ * @brief Indicates that the wolfSSL TLS backend is available in this build.
+ *
+ * Defined whenever this component is part of the build with the ESP-TLS custom
+ * stack enabled (wolfSSL registers itself as that stack). Application code can
+ * `#ifdef ESP_TLS_HAS_WOLFSSL` to feature-detect wolfSSL.
+ *
+ * This mirrors the ESP_TLS_HAS_WOLFSSL macro that ESP-IDF used to define in
+ * esp_tls.h when wolfSSL was a built-in esp-tls backend
+ * (CONFIG_ESP_TLS_USING_WOLFSSL). It is kept under the same name so code that
+ * already feature-detects wolfSSL this way keeps working now that wolfSSL
+ * lives in the esp-wolfssl component.
+ */
+#define ESP_TLS_HAS_WOLFSSL
+
+/**
  * @brief Register wolfSSL as the custom TLS stack for ESP-TLS
  *
  * Calling this function is normally NOT needed: when this component is part
