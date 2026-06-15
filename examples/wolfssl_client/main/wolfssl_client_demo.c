@@ -43,7 +43,7 @@ extern const uint8_t server_root_cert_pem_end[]   asm("_binary_server_root_cert_
                 "\r\n"
 /*
  * NOTE: To turn on debug logs for wolfSSL component and this example, uncomment
- * #define DEBUF_WOLFSSL in file components/wolfssl/port/user_settings.h
+ * #define DEBUG_WOLFSSL in file port/user_settings.h
  */
 
 #define WOLFSSL_DEMO_THREAD_NAME        "wolfssl_client"
@@ -59,7 +59,9 @@ extern const uint8_t server_root_cert_pem_end[]   asm("_binary_server_root_cert_
 static const char *TAG = "wolfssl_client";
 
 const char send_data[] = REQUEST;
-const int32_t send_bytes = sizeof(send_data);
+/* sizeof() would include the terminating NUL; use strlen() so the NUL byte is
+ * not written into the HTTP request stream. */
+const int32_t send_bytes = sizeof(send_data) - 1;
 char recv_data[1024] = {0};
 
 #ifdef DEBUG_WOLFSSL
@@ -80,7 +82,7 @@ static void show_ciphers(void)
 
 static void get_time()
 {
-    struct timeval now;
+    struct timeval now = {0};   /* must be zeroed: the loop below reads now.tv_sec before the first gettimeofday() */
     int sntp_retry_cnt = 0;
     int sntp_retry_time = 0;
 

@@ -15,7 +15,8 @@ This repository now uses upstream wolfSSL GitHub pointer as submodule and can st
 
 # Requirements
 - ESP_IDF
- - To run the examples user must have installed ESP-IDF version v4.1 (minimum supported) from https://github.com/espressif/esp-idf.git
+ - To use `esp-wolfssl` as the esp-tls custom TLS stack (recommended, see below), ESP-IDF v6.x or later (master) is required — `CONFIG_ESP_TLS_CUSTOM_STACK` is not available in earlier releases.
+ - To use the wolfSSL native APIs directly (as in `examples/wolfssl_client`), ESP-IDF v4.1 or later is sufficient.
  - The IDF_PATH should be set as an environment variable
 
 # Getting Started
@@ -29,18 +30,85 @@ This repository now uses upstream wolfSSL GitHub pointer as submodule and can st
  - ESP-IDF v4.1 and above is recommended version
 - Please refer to [example README](examples/README.md) for more information on setting up examples
 
+# Using esp-wolfssl as a custom esp-tls stack (ESP-IDF 6.x)
+
+From ESP-IDF 6.x onwards, `esp-tls` supports pluggable TLS backends via
+`CONFIG_ESP_TLS_CUSTOM_STACK`. `esp-wolfssl` registers itself automatically
+with `esp-tls` during system init (via `ESP_SYSTEM_INIT_FN`), so applications
+that already use the `esp_tls_*` APIs (or any higher-level component built on
+top — `esp_http_client`, `esp_https_ota`, `esp_https_server`, `esp-mqtt`, etc.)
+work unchanged. **No code changes are needed in `app_main`; you do not need to
+call `esp_wolfssl_register_stack()` explicitly.**
+
+The only requirement is that the `esp-wolfssl` component must be part of your
+build so that the auto-registration init function gets linked in. The
+recommended way to do that is via the IDF Component Manager:
+
+```bash
+# From the root of your project (the directory that contains main/):
+idf.py add-dependency "espressif/esp-wolfssl^1.0.0"
+```
+
+> Note: until this version of the component is published to the
+> [IDF Component Registry](https://components.espressif.com), use the
+> path-based dependency described below instead.
+
+This creates (or updates) `main/idf_component.yml` with an entry like:
+
+```yaml
+dependencies:
+  espressif/esp-wolfssl: "^1.0.0"
+```
+
+The Component Manager then injects `esp-wolfssl` into `main`'s private
+requirements before the build's dependency tree is expanded, so the component
+is pulled in even under `MINIMAL_BUILD` projects without any further wiring.
+
+Finally, enable the custom stack and (re)build:
+
+```bash
+idf.py menuconfig
+#  → Component config
+#     → ESP-TLS
+#        → Choose SSL/TLS library for ESP-TLS … = (X) Custom TLS stack
+idf.py build flash monitor
+```
+
+That's it — `esp-tls` calls now go through wolfSSL.
+
+## Alternative: path-based dependency (in-tree / forks)
+
+If you're working from a fork or vendor the component directly under
+`components/esp-wolfssl/` in your project (e.g. while iterating on changes to
+this repository), use a path-based dependency instead of the registry one. In
+`main/idf_component.yml`:
+
+```yaml
+dependencies:
+  esp-wolfssl:
+    path: ${PROJECT_DIR}/components/esp-wolfssl
+```
+
+The auto-registration mechanism is the same; only the way the component is
+located on disk differs.
+
+## Verifying
+
+On boot, `esp-tls` logs a single line confirming that the wolfSSL stack
+registered successfully:
+
+```
+I (xxx) esp-tls-custom-stack: Custom TLS stack registered successfully
+```
+
+If you do not see that line and `esp_tls_conn_*` calls return
+`ESP_ERR_INVALID_STATE` / "No TLS stack registered", the `esp-wolfssl`
+component was likely trimmed out of the build — double-check that
+`main/idf_component.yml` lists `esp-wolfssl` (registry or path) as a
+dependency.
+
 # Options (Debugging and more)
-- `esp-wolfssl` esp-tls related options can be obtained by choosing SSL library as `wolfSSL` in `idf.py/make menuconfig -> Component Config -> ESP-TLS -> choose SSL Library `.
-It shows following options
-
-    - Enable SMALL_CERT_VERIFY
-        - This is a flag used in wolfSSL component and is enabled by default in `esp-wolfssl`.
-        - Enabling this flag allows user to authenticate the server by providing the Intermediate CA certificate of the server, for a more strict check disable this flag after which you will have to provide the root certificate at top of the hierarchy of certificate chain which will have `Common Name = Issuer Name`, Such a strict check is not compulsary in most cases hence by default the flag is enabled but the option is provided for the user.
-
-    - Enable Debug Logs for wolfSSL
-        - This option prints detailed logs of all the internal operations, highly useful when debugging an error.
-
-- `esp-wolfssl` specific options (see NOTE) are available under `idf.py/make menuconfig -> Component Config -> wolfSSL`.
+- `esp-wolfssl` options are available under `idf.py menuconfig -> Component Config -> wolfSSL`.
 
     - Enable ALPN ( Application Layer Protocol Negotiation ) in wolfSSL
         - This option is enabled by default for wolfSSL, and can be disabled if not required.
@@ -48,9 +116,19 @@ It shows following options
     - Enable OCSP (Online Certificate Status Protocol) in wolfSSL
         - This options is disabled by default. Enabling it adds support for checking the host's certificate revocation status
           during the TLS handshake.
----
-**NOTE**
- These options are valid for `esp-tls` only if `wolfSSL` is selected as its SSL/TLS Library.
+
+    - Enable Post-Quantum Cryptography (ML-KEM, ML-DSA, SHA-3/SHAKE)
+        - Disabled by default. Enabling it compiles in the native wolfSSL PQC implementations
+          (~30 kB of additional flash even when no PQC algorithm is used at runtime).
+
+- Compile-time tuning (cipher suites, TLS 1.3, debug logging via `DEBUG_WOLFSSL`, etc.) is done in
+  [port/user_settings.h](port/user_settings.h). Note that certificate chains are verified with
+  `WOLFSSL_ALT_CERT_CHAINS`, i.e. providing the root CA is sufficient even when the server sends
+  intermediates that are not in your trust store.
+
+- Certificate date (notBefore/notAfter) validation is **enabled**: the system clock must be set
+  (e.g. via SNTP, see the `https_request` example) before TLS connections are made, otherwise
+  the handshake fails with a certificate-date error.
 ---
 # Comparison of wolfSSL and mbedTLS
 
