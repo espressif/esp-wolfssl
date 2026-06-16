@@ -3,6 +3,14 @@ set(COMPONENT_SRCDIRS "wolfssl/src/"
                       "port"
                       )
 
+# Certificate-bundle support (wolfSSL equivalent of MBEDTLS_CERTIFICATE_BUNDLE).
+# The implementation ships in the wolfSSL submodule's Espressif port; compile it
+# only when the feature is enabled.
+set(WOLFSSL_CRT_BUNDLE_DIR "wolfssl/wolfcrypt/src/port/Espressif/esp_crt_bundle")
+if(CONFIG_WOLFSSL_CERTIFICATE_BUNDLE)
+    list(APPEND COMPONENT_SRCDIRS "${WOLFSSL_CRT_BUNDLE_DIR}")
+endif()
+
 set(COMPONENT_REQUIRES lwip)
 # esp_system: ESP_SYSTEM_INIT_FN auto-registration; esp_hw_support: esp_fill_random()
 # used by esp_wolfssl_seed.c (wc_GenerateSeed).
@@ -64,6 +72,37 @@ endif()
 # Validated against ESP-IDF master (v6.2-dev).
 idf_component_get_property(esp_tls_dir esp-tls COMPONENT_DIR)
 target_include_directories(${COMPONENT_LIB} PRIVATE "${esp_tls_dir}/private_include")
+
+# Generate and embed the trusted-root certificate bundle for wolfSSL.
+# gen_crt_bundle.py writes a fixed file 'x509_crt_bundle_wolfssl' into its
+# working directory; target_add_binary_data() then embeds it, producing the
+# _binary_x509_crt_bundle_wolfssl_start/end symbols that esp_crt_bundle.c uses.
+if(CONFIG_WOLFSSL_CERTIFICATE_BUNDLE)
+    idf_build_get_property(python PYTHON)
+    set(crt_bundle_gen_dir "${COMPONENT_DIR}/${WOLFSSL_CRT_BUNDLE_DIR}")
+    set(crt_bundle_out "${CMAKE_CURRENT_BINARY_DIR}/x509_crt_bundle_wolfssl")
+    set(crt_inputs "${crt_bundle_gen_dir}/cacrt_all.pem" "${crt_bundle_gen_dir}/cacrt_local.pem")
+    add_custom_command(OUTPUT "${crt_bundle_out}"
+        COMMAND ${python} "${crt_bundle_gen_dir}/gen_crt_bundle.py" -q --input ${crt_inputs}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        DEPENDS ${crt_inputs} "${crt_bundle_gen_dir}/gen_crt_bundle.py"
+        VERBATIM)
+    add_custom_target(wolfssl_crt_bundle DEPENDS "${crt_bundle_out}")
+    add_dependencies(${COMPONENT_LIB} wolfssl_crt_bundle)
+    target_add_binary_data(${COMPONENT_LIB} "${crt_bundle_out}" BINARY)
+    # esp_crt_bundle.c gates its whole implementation behind the legacy
+    # built-in-backend macro CONFIG_ESP_TLS_USING_WOLFSSL. In the custom-stack
+    # model that macro is never set, so define it just for this file to enable
+    # the bundle code (it is the wolfSSL backend here regardless).
+    # esp_crt_bundle.c does not include settings.h first, so WOLFSSL_ESPIDF
+    # (defined via user_settings.h) is not set when its top-level guard is
+    # evaluated and the whole file compiles to nothing. Force settings.h first,
+    # matching every other wolfSSL source.
+    set_source_files_properties("${WOLFSSL_CRT_BUNDLE_DIR}/esp_crt_bundle.c"
+        PROPERTIES
+        COMPILE_DEFINITIONS "CONFIG_ESP_TLS_USING_WOLFSSL=1"
+        COMPILE_FLAGS "-include wolfssl/wolfcrypt/settings.h")
+endif()
 
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-cpp -Wno-maybe-uninitialized)
 set_source_files_properties(wolfssl/src/ssl.c PROPERTIES COMPILE_FLAGS "-Wno-format-truncation -Wno-char-subscripts")

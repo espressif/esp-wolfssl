@@ -40,4 +40,41 @@ menu "wolfSSL"
             requirements than classical crypto; consider increasing the task
             stack sizes when using them.
 
+    config WOLFSSL_CERTIFICATE_BUNDLE
+        bool "Enable trusted root certificate bundle (wolfSSL)"
+        default n
+        depends on !MBEDTLS_CERTIFICATE_BUNDLE
+        help
+            Enable support for a bundle of trusted root certificates, attached
+            via esp_tls_cfg_t.crt_bundle_attach = esp_crt_bundle_attach. This is
+            the wolfSSL equivalent of CONFIG_MBEDTLS_CERTIFICATE_BUNDLE: the
+            common root CAs are embedded in the app so TLS servers can be
+            verified without supplying a CA certificate per connection.
+
+            Mutually exclusive with CONFIG_MBEDTLS_CERTIFICATE_BUNDLE (wolfSSL
+            forbids enabling both); disable the mbedTLS bundle to use this one.
+
+    choice WOLFSSL_CERTIFICATE_BUNDLE_DEFAULT
+        prompt "Default certificate bundle options"
+        depends on WOLFSSL_CERTIFICATE_BUNDLE
+        default WOLFSSL_CERTIFICATE_BUNDLE_DEFAULT_FULL
+        help
+            Choose which certificates to embed in the default bundle.
+
+        config WOLFSSL_CERTIFICATE_BUNDLE_DEFAULT_FULL
+            bool "Use the full default certificate bundle"
+        config WOLFSSL_CERTIFICATE_BUNDLE_DEFAULT_NONE
+            bool "Do not use the default certificate bundle"
+    endchoice
+
+    config WOLFSSL_CERTIFICATE_BUNDLE_MAX_CERTS
+        int "Maximum number of certificates in the certificate bundle"
+        depends on WOLFSSL_CERTIFICATE_BUNDLE
+        default 200
+
+    config WOLFSSL_DEBUG_CERT_BUNDLE
+        bool "Enable certificate bundle debug logging"
+        depends on WOLFSSL_CERTIFICATE_BUNDLE
+        default n
+
 endmenu # wolfSSL
