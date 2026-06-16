@@ -27,6 +27,9 @@
 
 #include "wolfssl/ssl.h"
 #include "wolfssl/wolfcrypt/settings.h"
+#ifdef CONFIG_WOLFSSL_CERTIFICATE_BUNDLE
+#include "wolfssl/wolfcrypt/port/Espressif/esp_crt_bundle.h"
+#endif
 
 /* wolfSSL-specific error codes (not in esp_tls_errors.h for custom stack).
  * Offset 0x100 is far above the mbedTLS codes in esp_tls_errors.h (<= 0x1D),
@@ -250,14 +253,24 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
     }
 
     if (cfg->crt_bundle_attach != NULL) {
-        /* The IDF certificate bundle is mbedTLS-specific (mbedtls parsing
-         * callbacks + bundle format), so it cannot be attached to wolfSSL. */
-        ESP_LOGE(TAG, "crt_bundle_attach is not supported by the wolfSSL backend; "
-                      "use cacert_buf or esp_tls_set_global_ca_store() instead");
+#ifdef CONFIG_WOLFSSL_CERTIFICATE_BUNDLE
+        /* Hand our WOLFSSL_CTX to the bundle, which installs a verify callback
+         * (WOLFSSL_VERIFY_PEER) that checks the peer chain against the embedded
+         * root-CA bundle. */
+        wolfssl_ssl_config bundle_conf = { 0 };
+        bundle_conf.priv_ctx = tls->priv_ctx;
+        bundle_conf.priv_ssl = tls->priv_ssl;
+        esp_err_t bundle_ret = cfg->crt_bundle_attach(&bundle_conf);
+        if (bundle_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to attach certificate bundle, error: 0x%x", bundle_ret);
+            return ESP_ERR_WOLFSSL_CERT_VERIFY_SETUP_FAILED;
+        }
+#else
+        ESP_LOGE(TAG, "crt_bundle_attach is set but CONFIG_WOLFSSL_CERTIFICATE_BUNDLE "
+                      "is disabled; enable it or use cacert_buf / global CA store");
         return ESP_ERR_NOT_SUPPORTED;
-    }
-
-    if (cfg->use_global_ca_store == true) {
+#endif
+    } else if (cfg->use_global_ca_store == true) {
         if (global_cacert == NULL) {
             ESP_LOGE(TAG, "global_ca_store requested but not set; call esp_tls_set_global_ca_store() first");
             return ESP_ERR_INVALID_STATE;

@@ -62,6 +62,13 @@
 /* Allow unknown/undecoded X509v3 extensions - needed for modern CA certs */
 #define WOLFSSL_ALLOW_UNDECODED_EXTENSIONS
 
+#ifdef CONFIG_WOLFSSL_CERTIFICATE_BUNDLE
+/* The trusted-root bundle contains some legacy CAs with a zero serial number,
+ * which wolfSSL's strict (RFC 5280) ASN parsing rejects. Allow them so the
+ * full bundle loads instead of silently dropping those roots. */
+#define WOLFSSL_ASN_ALLOW_0_SERIAL
+#endif
+
 /* TLS 1.3                                 */
 // #define WOLFSSL_TLS13
 #define HAVE_TLS_EXTENSIONS
