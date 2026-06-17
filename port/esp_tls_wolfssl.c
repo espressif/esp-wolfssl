@@ -394,27 +394,21 @@ static esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls
     }
 
 #ifdef CONFIG_WOLFSSL_HAVE_OCSP
-    /* OCSP status checking is part of certificate verification. When the caller
-     * opts out of strict (common-name) verification, skip OCSP too so the
-     * relaxed-verification request is not defeated by an OCSP failure.
-     * See esp-idf PR #14684. */
-    if (!cfg->skip_common_name) {
-        int ocsp_options = 0;
+    int ocsp_options = 0;
 #ifdef ESP_TLS_OCSP_CHECKALL
-        ocsp_options |= WOLFSSL_OCSP_CHECKALL;
+    ocsp_options |= WOLFSSL_OCSP_CHECKALL;
 #endif
-        if ((ret = wolfSSL_CTX_EnableOCSP((WOLFSSL_CTX *)tls->priv_ctx, ocsp_options)) != WOLFSSL_SUCCESS) {
-            ESP_LOGE(TAG, "wolfSSL_CTX_EnableOCSP failed, returned %d", ret);
-            return ESP_ERR_WOLFSSL_CTX_SETUP_FAILED;
-        }
-        if ((ret = wolfSSL_CTX_EnableOCSPStapling((WOLFSSL_CTX *)tls->priv_ctx )) != WOLFSSL_SUCCESS) {
-            ESP_LOGE(TAG, "wolfSSL_CTX_EnableOCSPStapling failed, returned %d", ret);
-            return ESP_ERR_WOLFSSL_CTX_SETUP_FAILED;
-        }
-        if ((ret = wolfSSL_UseOCSPStapling((WOLFSSL *)tls->priv_ssl, WOLFSSL_CSR_OCSP, WOLFSSL_CSR_OCSP_USE_NONCE)) != WOLFSSL_SUCCESS) {
-            ESP_LOGE(TAG, "wolfSSL_UseOCSPStapling failed, returned %d", ret);
-            return ESP_ERR_WOLFSSL_SSL_SETUP_FAILED;
-        }
+    if ((ret = wolfSSL_CTX_EnableOCSP((WOLFSSL_CTX *)tls->priv_ctx, ocsp_options)) != WOLFSSL_SUCCESS) {
+        ESP_LOGE(TAG, "wolfSSL_CTX_EnableOCSP failed, returned %d", ret);
+        return ESP_ERR_WOLFSSL_CTX_SETUP_FAILED;
+    }
+    if ((ret = wolfSSL_CTX_EnableOCSPStapling((WOLFSSL_CTX *)tls->priv_ctx )) != WOLFSSL_SUCCESS) {
+        ESP_LOGE(TAG, "wolfSSL_CTX_EnableOCSPStapling failed, returned %d", ret);
+        return ESP_ERR_WOLFSSL_CTX_SETUP_FAILED;
+    }
+    if ((ret = wolfSSL_UseOCSPStapling((WOLFSSL *)tls->priv_ssl, WOLFSSL_CSR_OCSP, WOLFSSL_CSR_OCSP_USE_NONCE)) != WOLFSSL_SUCCESS) {
+        ESP_LOGE(TAG, "wolfSSL_UseOCSPStapling failed, returned %d", ret);
+        return ESP_ERR_WOLFSSL_SSL_SETUP_FAILED;
     }
 #endif /* CONFIG_WOLFSSL_HAVE_OCSP */
 
